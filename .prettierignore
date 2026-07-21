@@ -1,0 +1,17 @@
+.next/
+coverage/
+data/
+dist/
+node_modules/
+playwright-report/
+test-results/
+package-lock.json
+src/**/*.jsx
+src/**/*.js
+scripts/**/*.mjs
+vite.config.mjs
+.agents/
+.claude/
+.idea/
+src/styles.css
+src/features/import/import-flow.css

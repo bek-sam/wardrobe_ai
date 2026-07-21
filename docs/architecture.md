@@ -1,0 +1,77 @@
+# Architecture
+
+Wardrobe AI is one strict TypeScript Next.js App Router application with server-rendered pages, Route Handlers, authenticated Supabase access, deterministic recommendation logic, and bounded OpenAI calls. Long-running work is represented in PostgreSQL rather than being tied to one browser request.
+
+## Request boundaries
+
+```text
+browser
+  ├─ public/auth pages
+  └─ protected application pages
+       └─ Next.js Route Handler
+            ├─ resolve Supabase user
+            ├─ validate with Zod
+            ├─ user-scoped PostgreSQL/RLS operation
+            ├─ deterministic service or authenticated tool
+            └─ typed response / user-visible stream
+
+durable worker
+  └─ lease queued job with service role
+       ├─ decode/normalize private image or clues
+       ├─ call bounded OpenAI operation
+       ├─ persist reviewable proposal and safe trace
+       └─ release as review, retry, or terminal failure
+```
+
+The browser never receives the Supabase service-role key or OpenAI key. Ordinary application routes use the user session and RLS. Service-role access is limited to background work, Storage administration, account cleanup, and operations that cannot be expressed through user RLS.
+
+## Application layers
+
+- `src/app`: layouts, pages, and HTTP route handlers.
+- `src/features`: feature types, schemas, hooks, and components.
+- `src/lib/supabase`: browser, server-session, and admin clients.
+- `src/lib/auth`: authenticated viewer resolution.
+- `src/lib/image`: decoded-content validation, normalization, cropping, cleanup, and thumbnails.
+- `src/lib/recommendation`: hard filters, configurable scoring, color/layer compatibility, exact-ID validation, and balanced planning.
+- `src/lib/weather`: Open-Meteo geocoding, forecasts, caching, and clothing constraints.
+- `src/lib/ai`: environment-selected OpenAI clients, strict schemas, prompts, agents, and authenticated tools.
+- `src/jobs`: durable import, research, and private-object cleanup processors.
+- `supabase/migrations`: schema, RLS, private Storage, transactional RPCs, usage controls, and account lifecycle.
+
+## Data flow: photo import
+
+1. An authenticated route allocates an owned `import_jobs` row and signed private upload path.
+2. The browser uploads directly to the private originals bucket.
+3. A worker leases the job, validates decoded bytes, normalizes orientation/color, removes metadata, and analyzes the image once.
+4. Each detected garment becomes a durable candidate with a crop and field-level AI confidence.
+5. The user approves/corrects the crop, extraction, and proposed metadata.
+6. Confirmation creates owned wardrobe records and image lineage in one PostgreSQL transaction. A retry returns the same item IDs.
+7. Approved derivatives are promoted to item-prefixed private paths idempotently; immutable source lineage remains available for audit/retry.
+
+AI never silently writes the final item metadata. Confirmation merges only reviewable proposals and user edits.
+
+## Data flow: styling
+
+1. Resolve the authenticated user, preferences, requested date/location, and candidate wardrobe rows.
+2. Convert forecast data into deterministic constraints.
+3. Remove archived, deleted, unavailable, laundry, and weather-incompatible items.
+4. Score the remaining candidates with centrally configured weights.
+5. Give the stylist a compact candidate set of exact owned IDs and structured metadata.
+6. Validate its structured result against ownership, availability, role, and outfit-foundation rules.
+7. Optionally save through a transactional database RPC.
+
+A valid foundation is exactly one dress or exactly one top plus one bottom. A dress cannot be combined with a top or bottom. Optional layer, shoes, and accessory roles are unique.
+
+## Reliability
+
+- Import, research, and storage-cleanup state, attempts, lease times, and errors are persisted.
+- Worker claims use `FOR UPDATE SKIP LOCKED`.
+- Garment candidate IDs are deterministic per job/ordinal.
+- Save, swap, wear, research-acceptance, and plan operations use transactional RPCs.
+- Idempotency and feature-usage tables support retry safety and cost controls.
+- Agent logs contain safe summaries and usage, not image bytes, secrets, or hidden reasoning.
+- Weather failure degrades to occasion/preference styling instead of blocking a recommendation.
+
+## Legacy boundary
+
+Vite and the local JSON importer remain behind `legacy:*` scripts during parity review. Production Next.js code does not read `data/library.json`, depend on a global model-reference photo, or register the old cache-first service worker.

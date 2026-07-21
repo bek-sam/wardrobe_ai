@@ -1,0 +1,65 @@
+import { planCreateSchema, planListQuerySchema } from "@/app/api/_lib/schemas";
+import { parseQuery, throwDatabaseError, throwNotFound } from "@/app/api/_lib/route";
+import { ok, parseJson, routeError } from "@/lib/api/response";
+import { requireViewer } from "@/lib/auth/viewer";
+import { createClient } from "@/lib/supabase/server";
+
+export async function GET(request: Request) {
+  try {
+    const viewer = await requireViewer();
+    const filters = parseQuery(request, planListQuerySchema);
+    const supabase = await createClient();
+    let query = supabase
+      .from("outfit_plans")
+      .select("*, outfits(*)", { count: "exact" })
+      .eq("user_id", viewer.id);
+    if (filters.from) query = query.gte("planned_date", filters.from);
+    if (filters.to) query = query.lte("planned_date", filters.to);
+    if (filters.status) query = query.eq("status", filters.status);
+
+    const { data, error, count } = await query
+      .order("planned_date", { ascending: true })
+      .order("start_time", { ascending: true, nullsFirst: false })
+      .range(filters.offset, filters.offset + filters.limit - 1);
+    throwDatabaseError(error, "Could not load outfit plans.");
+    return ok(
+      {
+        plans: data ?? [],
+        count: count ?? 0,
+        limit: filters.limit,
+        offset: filters.offset,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    return routeError(error);
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const viewer = await requireViewer();
+    const input = await parseJson(request, planCreateSchema);
+    const supabase = await createClient();
+    if (input.outfit_id) {
+      const { data: outfit, error: outfitError } = await supabase
+        .from("outfits")
+        .select("id")
+        .eq("id", input.outfit_id)
+        .eq("user_id", viewer.id)
+        .maybeSingle();
+      throwDatabaseError(outfitError, "Could not verify the outfit.");
+      if (!outfit) throwNotFound("Outfit");
+    }
+
+    const { data, error } = await supabase
+      .from("outfit_plans")
+      .insert({ ...input, user_id: viewer.id })
+      .select()
+      .single();
+    throwDatabaseError(error, "Could not create the outfit plan.");
+    return ok(data, { status: 201 });
+  } catch (error) {
+    return routeError(error);
+  }
+}
