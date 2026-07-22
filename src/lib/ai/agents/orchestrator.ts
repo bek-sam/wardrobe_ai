@@ -1,4 +1,9 @@
-import { runStylistAgent } from "@/lib/ai/agents/stylist-agent";
+import { explainWardrobeCandidate, runStylistAgent } from "@/lib/ai/agents/stylist-agent";
+import {
+  markOutfitCandidateSuggested,
+  recordFallbackOutfitCandidate,
+  retrieveStoredOutfitCandidate,
+} from "@/lib/ai/agents/retrieve-outfit-candidate";
 import { getPreferences } from "@/lib/ai/tools/get-preferences";
 import { getWardrobeCandidates } from "@/lib/ai/tools/get-wardrobe";
 import { getWeatherForStyling } from "@/lib/ai/tools/get-weather";
@@ -43,6 +48,35 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
     weatherWarning =
       "Weather is temporarily unavailable; this look is based on occasion and preferences.";
   }
+
+  const retrieved = await retrieveStoredOutfitCandidate({
+    userId: input.userId,
+    occasion: input.occasion,
+    targetFormality: input.targetFormality ?? style.preferred_formality ?? undefined,
+    weather: weather?.constraints,
+    preferences: {
+      favoriteColors: style.favorite_colors,
+      avoidedColors: style.avoided_colors,
+      preferredFits: style.preferred_fits,
+      likedItemIds: feedback.likedItemIds,
+      dislikedItemIds: feedback.dislikedItemIds,
+    },
+  }).catch(() => null);
+
+  if (retrieved) {
+    const retrievedResult = await tryServeRetrievedOutfit({
+      input,
+      startedAt,
+      environment,
+      style,
+      feedback,
+      weather,
+      weatherWarning,
+      retrieved,
+    });
+    if (retrievedResult) return retrievedResult;
+  }
+
   const candidates = await getWardrobeCandidates({
     userId: input.userId,
     weather: weather?.constraints,
@@ -132,6 +166,7 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
         date: input.date,
         occasion: input.occasion,
         candidateCount: candidates.items.length,
+        source: "composition",
       },
       output_summary: {
         itemIds: agent.result.itemIds,
@@ -145,6 +180,13 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
     })
     .select("id")
     .maybeSingle();
+
+  void recordFallbackOutfitCandidate({
+    userId: input.userId,
+    occasion: input.occasion,
+    items: validation.outfit.items,
+  });
+
   return {
     generationId: recordedRun?.id ?? null,
     intent: classifyWardrobeIntent(input.request),
@@ -152,4 +194,132 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
     weather,
     excludedItemCount: candidates.excluded.length,
   };
+}
+
+type TryServeRetrievedOutfitInput = {
+  input: StylistOrchestratorInput;
+  startedAt: number;
+  environment: ReturnType<typeof getServerEnvironment>;
+  style: Awaited<ReturnType<typeof getPreferences>>["style"];
+  feedback: Awaited<ReturnType<typeof getPreferences>>["feedback"];
+  weather: Awaited<ReturnType<typeof getWeatherForStyling>>;
+  weatherWarning: string | null;
+  retrieved: NonNullable<Awaited<ReturnType<typeof retrieveStoredOutfitCandidate>>>;
+};
+
+// Asks the model only to explain an already-selected candidate instead of
+// composing a fresh outfit. Returns null (never throws) on any failure so the
+// caller can fall back to full composition exactly as if retrieval had found
+// nothing.
+async function tryServeRetrievedOutfit({
+  input,
+  startedAt,
+  environment,
+  style,
+  feedback,
+  weather,
+  weatherWarning,
+  retrieved,
+}: TryServeRetrievedOutfitInput) {
+  try {
+    const explanation = await explainWardrobeCandidate({
+      userId: input.userId,
+      request: input.request,
+      occasion: input.occasion,
+      weather: weather
+        ? {
+            ...weather.snapshot,
+            constraints: weather.constraints,
+            indoorOutdoor: input.indoorOutdoor,
+          }
+        : null,
+      preferences: { ...style, feedback },
+      recentWear: retrieved.resolvedItems.map((item) => ({
+        id: item.id,
+        wearCount: item.wear_count,
+        lastWornAt: item.last_worn_at,
+      })),
+      items: retrieved.resolvedItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        role: resolveWardrobeItemRole(item),
+        category: item.category,
+        colors: item.color_names,
+        pattern: item.pattern,
+        fit: item.fit,
+        silhouette: item.silhouette,
+        warmthLevel: item.warmth_level,
+        formalityLevel: item.formality_level,
+        occasionTags: item.occasion_tags,
+        weatherTags: item.weather_tags,
+        score: retrieved.score,
+      })),
+    });
+
+    const validation = validateGeneratedOutfit(
+      {
+        title: explanation.result.title,
+        items: retrieved.items.map(({ item_id, role, sort_order }) => ({
+          item_id,
+          role,
+          sort_order,
+        })),
+        explanation: explanation.result.explanation,
+        warnings: [...(weatherWarning ? [weatherWarning] : []), ...explanation.result.warnings],
+        confidence: explanation.result.confidence,
+        missing_category: null,
+        follow_up_question: null,
+      },
+      retrieved.resolvedItems,
+      { expectedUserId: input.userId },
+    );
+    if (!validation.success) return null;
+
+    const admin = createAdminClient();
+    const { data: recordedRun } = await admin
+      .from("agent_runs")
+      .insert({
+        user_id: input.userId,
+        agent_type: "wardrobe_orchestrator",
+        status: "complete",
+        input_summary: {
+          intent: classifyWardrobeIntent(input.request),
+          date: input.date,
+          occasion: input.occasion,
+          source: "retrieval",
+          candidateId: retrieved.candidateId,
+        },
+        output_summary: {
+          itemIds: retrieved.items.map((item) => item.item_id),
+          responseId: explanation.responseId,
+          outfit: {
+            title: validation.outfit.title,
+            items: validation.outfit.items,
+            explanation: validation.outfit.explanation,
+            warnings: validation.outfit.warnings,
+            confidence: validation.outfit.confidence,
+            missing_category: validation.outfit.missing_category,
+            follow_up_question: validation.outfit.follow_up_question,
+          },
+          weatherContext: weather ?? {},
+        },
+        model: environment.OPENAI_STYLIST_MODEL ?? "unconfigured",
+        latency_ms: Date.now() - startedAt,
+        usage: explanation.usage ?? {},
+      })
+      .select("id")
+      .maybeSingle();
+
+    void markOutfitCandidateSuggested(input.userId, retrieved.candidateId);
+
+    return {
+      generationId: recordedRun?.id ?? null,
+      intent: classifyWardrobeIntent(input.request),
+      outfit: validation.outfit,
+      weather,
+      excludedItemCount: 0,
+    };
+  } catch {
+    return null;
+  }
 }

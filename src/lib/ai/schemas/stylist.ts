@@ -30,5 +30,18 @@ export const plannerResultSchema = z
   })
   .strict();
 
+// Used when an outfit's items were already chosen by retrieval from the
+// precomputed candidate library: the model only explains the fixed pick, it
+// does not choose items, so there is no itemIds field.
+export const explainOutfitCandidateResultSchema = z
+  .object({
+    title: z.string().min(1).max(100),
+    explanation: z.string().min(1).max(1_200),
+    warnings: z.array(z.string().min(1).max(240)).max(8),
+    confidence: z.number().min(0).max(1),
+  })
+  .strict();
+
 export type StylistResult = z.infer<typeof stylistResultSchema>;
 export type PlannerResult = z.infer<typeof plannerResultSchema>;
+export type ExplainOutfitCandidateResult = z.infer<typeof explainOutfitCandidateResultSchema>;

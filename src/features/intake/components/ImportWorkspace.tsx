@@ -310,6 +310,13 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return payload.data;
 }
 
+// Best-effort nudge: a database trigger already durably queues a wardrobe
+// compilation job whenever confirmed items land, so this call is purely a
+// latency optimization to process it promptly. Safe to ignore if it fails.
+function triggerWardrobeCompile() {
+  fetch("/api/wardrobe/compile", { method: "POST" }).catch(() => {});
+}
+
 function titleCase(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -1222,6 +1229,7 @@ export function ImportWorkspace({ configured }: { configured: boolean }) {
       await requestJson<unknown>(`/api/imports/${encodeURIComponent(job.id)}/confirm`, {
         method: "POST",
       });
+      triggerWardrobeCompile();
       await refreshJob(job.id);
       setDirtyCandidates(new Set());
     } catch (caught) {

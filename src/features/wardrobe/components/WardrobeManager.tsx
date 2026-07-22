@@ -117,6 +117,13 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
   return payload.data;
 }
 
+// Best-effort nudge: a database trigger already durably queues a wardrobe
+// compilation job on any relevant item change, so this call is purely a
+// latency optimization to process it promptly. Safe to ignore if it fails.
+function triggerWardrobeCompile() {
+  fetch("/api/wardrobe/compile", { method: "POST" }).catch(() => {});
+}
+
 function titleCase(value: string) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -281,6 +288,7 @@ function ItemFormDialog({
         }
       }
       onSaved(saved);
+      triggerWardrobeCompile();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The item could not be saved.");
     } finally {
@@ -561,6 +569,42 @@ export function WardrobeManager({
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<WardrobeItem | null>(null);
   const [busyItemId, setBusyItemId] = useState<string | null>(null);
+  const [compileStatus, setCompileStatus] = useState<{
+    candidate_count: number;
+    dirty_since: string | null;
+  } | null>(null);
+  const [recompiling, setRecompiling] = useState(false);
+
+  const refreshCompileStatus = useCallback(async () => {
+    if (!configured) return;
+    try {
+      const result = await requestJson<{ candidate_count: number; dirty_since: string | null }>(
+        "/api/wardrobe/compile",
+      );
+      setCompileStatus(result);
+    } catch {
+      // The outfit-library status is a non-critical widget; ignore failures.
+    }
+  }, [configured]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void refreshCompileStatus();
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [refreshCompileStatus]);
+
+  async function recompileNow() {
+    setRecompiling(true);
+    try {
+      await fetch("/api/wardrobe/compile", { method: "POST" });
+    } catch {
+      // Ignored: the job stays queued and a later trigger will pick it up.
+    } finally {
+      setRecompiling(false);
+      void refreshCompileStatus();
+    }
+  }
 
   useEffect(() => {
     if (!configured) return;
@@ -647,6 +691,7 @@ export function WardrobeManager({
       try {
         const result = await requestJson<T>(path, init);
         apply(result);
+        triggerWardrobeCompile();
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "The item could not be updated.");
       } finally {
@@ -898,6 +943,26 @@ export function WardrobeManager({
       ) : null}
       <div className="wardrobe-results">
         <p>{loading ? "Loading wardrobe…" : `${total} ${total === 1 ? "piece" : "pieces"}`}</p>
+        {configured ? (
+          <div className="wardrobe-compile-status">
+            <span>
+              {recompiling
+                ? "Recompiling outfit library…"
+                : compileStatus?.dirty_since
+                  ? "Outfit library: changes pending"
+                  : compileStatus
+                    ? `Outfit library: ${compileStatus.candidate_count} outfits ready`
+                    : "Outfit library: —"}
+            </span>
+            <Button
+              disabled={recompiling}
+              onClick={() => void recompileNow()}
+              variant="ghost"
+            >
+              Recompile
+            </Button>
+          </div>
+        ) : null}
         <select
           aria-label="Sort wardrobe"
           onChange={(event) => setSort(event.target.value)}
