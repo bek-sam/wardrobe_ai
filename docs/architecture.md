@@ -35,7 +35,8 @@ The browser never receives the Supabase service-role key or OpenAI key. Ordinary
 - `src/lib/recommendation`: hard filters, configurable scoring, color/layer compatibility, exact-ID validation, and balanced planning.
 - `src/lib/weather`: Open-Meteo geocoding, forecasts, caching, and clothing constraints.
 - `src/lib/ai`: environment-selected OpenAI clients, strict schemas, prompts, agents, and authenticated tools.
-- `src/jobs`: durable import, research, and private-object cleanup processors.
+- `src/lib/compilation`: bounded, deterministic outfit-candidate generation for the precomputed library (weights/diversity, no model calls).
+- `src/jobs`: durable import, research, wardrobe-compilation, and private-object cleanup processors.
 - `supabase/migrations`: schema, RLS, private Storage, transactional RPCs, usage controls, and account lifecycle.
 
 ## Data flow: photo import
@@ -61,6 +62,17 @@ AI never silently writes the final item metadata. Confirmation merges only revie
 7. Optionally save through a transactional database RPC.
 
 A valid foundation is exactly one dress or exactly one top plus one bottom. A dress cannot be combined with a top or bottom. Optional layer, shoes, and accessory roles are unique.
+
+## Data flow: precomputed outfit-candidate library
+
+A durable, debounced `wardrobe_compilation_jobs` row (queued by a trigger on relevant `wardrobe_items` changes, or by `request_wardrobe_recompilation()` for a manual "Recompile") is leased — by the interactive route for low-latency processing, or by the scheduler-driven `POST /api/internal/wardrobe/process` worker — and run through `compileWardrobeForUser`:
+
+1. Load the user's active/available wardrobe and style/feedback preferences.
+2. `generateOutfitCandidates` greedily fills each foundation's roles per normalized occasion category (`src/lib/recommendation/occasion-context.ts`), expanding a small bounded set of layer/footwear/accessory variants and tagging aggregate weather coverage — never an unbounded Cartesian product.
+3. Every candidate for a fresh `compiled_wardrobe_version` is inserted **alongside** any still-active prior version (never a delete-then-insert).
+4. `finalize_wardrobe_compilation()` atomically verifies the new version's row count, flips `wardrobe_compilation_state`'s published-version pointer, archives the prior version, and compare-and-swaps the dirty-change counter — publishing a version that ends up slightly stale (a wardrobe edit landed mid-run) is still safe, since retrieval re-validates item ownership/availability per request; it simply queues a follow-up job.
+
+Live retrieval (`retrieveStoredOutfitCandidates`) prefilters a wide pool by the request's resolved occasion category, live-scores/hard-filters it against current weather and preferences, and returns up to three ranked, deduplicated alternatives (safest, underused, expressive) instead of one. The orchestrator only falls back to full LLM composition when nothing in the library clears the confidence bar; exposure counting and fallback-candidate growth are atomic RPCs invoked through Next's `after()` so they run post-response without an untracked background promise.
 
 ## Reliability
 

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { signUploadSchema, type UploadPurpose } from "@/features/uploads/schemas";
 import { parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { getServerEnvironment } from "@/lib/env/server";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +36,8 @@ function safeFileName(fileName: string, contentType: string) {
 
 export async function POST(request: Request) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [viewer, input, supabase] = await Promise.all([
       requireViewer(),
       parseJson(request, signUploadSchema),

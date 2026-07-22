@@ -251,7 +251,16 @@ export const planListQuerySchema = z
     "from must not be after to.",
   );
 
-export const accountDeletionSchema = z.object({ confirmation: z.string().uuid() }).strict();
+export const accountDeletionSchema = z
+  .object({ confirmation: z.string().uuid(), password: z.string().min(1).max(200) })
+  .strict();
+
+export const accountDeletionRequestSchema = z.object({
+  id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  status: z.enum(["storage_deletion_queued", "deleting_auth_user", "complete", "failed"]),
+  storage_objects_total: z.number().nonnegative(),
+});
 
 export const accountDeletionManifestSchema = z
   .object({

@@ -1,6 +1,7 @@
 import { planParamsSchema, planUpdateSchema } from "@/app/api/_lib/schemas";
 import { parseRouteParams, throwDatabaseError, throwNotFound } from "@/app/api/_lib/route";
 import { ok, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createClient } from "@/lib/supabase/server";
 
@@ -27,6 +28,8 @@ export async function GET(_request: Request, context: Context) {
 
 export async function PATCH(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const { planId } = await parseRouteParams(context.params, planParamsSchema);
     const input = await parseJson(request, planUpdateSchema);
@@ -57,8 +60,10 @@ export async function PATCH(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(_request: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const { planId } = await parseRouteParams(context.params, planParamsSchema);
     const supabase = await createClient();

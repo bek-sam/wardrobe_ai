@@ -12,3 +12,5 @@ test-results/
 !.env.example
 *.log
 data/
+NEW_FEATURES.md
+supabase/.temp/

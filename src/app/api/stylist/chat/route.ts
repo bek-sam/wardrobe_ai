@@ -1,6 +1,7 @@
 import { sanitizeStylistStructuredResult } from "@/features/stylist/history";
 import { stylistRequestSchema } from "@/features/stylist/schemas";
 import { ApiError, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { runWardrobeOrchestrator } from "@/lib/ai/agents/orchestrator";
 import { requireViewer } from "@/lib/auth/viewer";
 import { getServerEnvironment } from "@/lib/env/server";
@@ -16,6 +17,8 @@ function event(name: string, data: unknown) {
 
 export async function POST(request: Request) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [viewer, input, supabase] = await Promise.all([
       requireViewer(),
       parseJson(request, stylistRequestSchema),

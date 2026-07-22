@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { ApiError, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type Context = { params: Promise<{ jobId: string; candidateId: string }> };
 
-export async function POST(_request: Request, context: Context) {
+export async function POST(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [{ jobId, candidateId }, viewer] = await Promise.all([context.params, requireViewer()]);
     const admin = createAdminClient();
     const { data, error } = await admin

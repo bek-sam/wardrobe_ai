@@ -2007,6 +2007,33 @@ textarea:focus-visible {
   background: transparent;
   font-size: 11px;
 }
+.wardrobe-compile-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--paper-soft);
+}
+.wardrobe-compile-status-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.wardrobe-compile-status-text span {
+  font-size: 11px;
+}
+.wardrobe-compile-status-meta {
+  color: var(--muted);
+}
+.wardrobe-compile-status-notice {
+  color: var(--rust-dark);
+}
+
 .wardrobe-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

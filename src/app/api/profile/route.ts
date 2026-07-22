@@ -1,4 +1,5 @@
 import { ApiError, ok, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,6 +25,8 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const input = await parseJson(request, profileUpdateSchema);
     if (input.avatar_path && !input.avatar_path.startsWith(`${viewer.id}/`)) {

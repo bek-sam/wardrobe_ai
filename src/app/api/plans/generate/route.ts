@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generatePlanSchema } from "@/features/planner/schemas";
 import type { WardrobeItem } from "@/features/wardrobe/types";
 import { parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { runPlannerAgent, type PlannerDay } from "@/lib/ai/agents/planner-agent";
 import { getPreferences } from "@/lib/ai/tools/get-preferences";
 import { getWardrobeCandidates } from "@/lib/ai/tools/get-wardrobe";
@@ -17,6 +18,8 @@ export const maxDuration = 300;
 
 export async function POST(request: Request) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [viewer, input, supabase] = await Promise.all([
       requireViewer(),
       parseJson(request, generatePlanSchema),

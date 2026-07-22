@@ -1,6 +1,7 @@
 import { wardrobeItemCreateSchema } from "@/features/wardrobe/schemas";
 import { withSignedWardrobeImages } from "@/features/wardrobe/server/item-view";
 import { ok, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createClient } from "@/lib/supabase/server";
 
@@ -54,6 +55,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const input = await parseJson(request, wardrobeItemCreateSchema);
     const supabase = await createClient();

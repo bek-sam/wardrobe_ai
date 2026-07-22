@@ -153,6 +153,7 @@ export function SettingsManager({ configured }: { configured: boolean }) {
   const [activeSection, setActiveSection] = useState("settings-profile");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePhrase, setDeletePhrase] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
 
   useEffect(() => {
     if (!configured) return;
@@ -312,7 +313,7 @@ export function SettingsManager({ configured }: { configured: boolean }) {
   }
 
   async function deleteAccount() {
-    if (!profile || deletePhrase !== "DELETE") return;
+    if (!profile || deletePhrase !== "DELETE" || !deletePassword) return;
     if (
       !window.confirm(
         "Permanently delete this account, all wardrobe data, and associated private files? This cannot be undone.",
@@ -325,7 +326,7 @@ export function SettingsManager({ configured }: { configured: boolean }) {
     try {
       await requestJson<{ deleted: true }>("/api/account", {
         method: "DELETE",
-        body: JSON.stringify({ confirmation: profile.id }),
+        body: JSON.stringify({ confirmation: profile.id, password: deletePassword }),
       });
       window.location.assign("/");
     } catch (error) {
@@ -333,6 +334,7 @@ export function SettingsManager({ configured }: { configured: boolean }) {
         tone: "error",
         message: error instanceof Error ? error.message : "The account could not be deleted.",
       });
+      setDeletePassword("");
       setBusy(null);
     }
   }
@@ -774,8 +776,8 @@ export function SettingsManager({ configured }: { configured: boolean }) {
                 aria-label="Confirm account deletion"
               >
                 <p>
-                  This cannot be undone. Type <strong>DELETE</strong>, then confirm once more in
-                  your browser.
+                  This cannot be undone. Type <strong>DELETE</strong>, confirm your password, then
+                  confirm once more in your browser.
                 </p>
                 <TextField
                   autoComplete="off"
@@ -785,9 +787,18 @@ export function SettingsManager({ configured }: { configured: boolean }) {
                   onChange={(event) => setDeletePhrase(event.target.value)}
                   value={deletePhrase}
                 />
+                <TextField
+                  autoComplete="current-password"
+                  disabled={busy === "delete"}
+                  id="delete-account-password"
+                  label="Current password"
+                  onChange={(event) => setDeletePassword(event.target.value)}
+                  type="password"
+                  value={deletePassword}
+                />
                 <div className="settings-form-actions">
                   <Button
-                    disabled={deletePhrase !== "DELETE" || busy === "delete"}
+                    disabled={deletePhrase !== "DELETE" || !deletePassword || busy === "delete"}
                     onClick={() => void deleteAccount()}
                     variant="danger"
                   >
@@ -798,6 +809,7 @@ export function SettingsManager({ configured }: { configured: boolean }) {
                     onClick={() => {
                       setDeleteOpen(false);
                       setDeletePhrase("");
+                      setDeletePassword("");
                     }}
                     variant="ghost"
                   >

@@ -64,9 +64,11 @@ Never put raw secrets, private image bytes, hidden model reasoning, or full thir
 
 ## Deletion
 
-Deleting rows from `storage.objects` with raw SQL is not the supported way to remove underlying files. Use the Storage API. Account deletion must remove all objects from `account_deletion_manifest()` before deleting the Auth user. The Auth deletion then cascades through `profiles` and all relational tables.
+Deleting rows from `storage.objects` with raw SQL is not the supported way to remove underlying files. Use the Storage API.
 
 Hard-deleting image/import metadata automatically adds its object path to `storage_deletion_queue`. Queue rows intentionally survive profile/Auth deletion so no orphaned bytes become unreachable. Process that queue with a service-role worker; database triggers do not attempt to delete Storage bytes directly.
+
+Account deletion (`DELETE /api/account`) reuses this same queue instead of removing Storage objects synchronously in the request: it requires a fresh password confirmation, then `start_account_deletion()` enqueues every object from `account_deletion_manifest()` into `storage_deletion_queue` and durably records the request in `account_deletion_requests` (also FK-free, for the same reason) before the route deletes the Auth user through the Admin API. A crash between enqueueing and Auth deletion is resumable: retrying the request finds the existing `deleting_auth_user` row instead of starting over or losing track of the attempt.
 
 ## Required isolation tests
 

@@ -66,7 +66,11 @@ async function loadPreferenceContext(admin: AdminClient, userId: string) {
   const dislikedEvidence = new Map<string, number>();
   for (const row of feedbackRows ?? []) {
     const evidence =
-      row.feedback_type === "like" ? likedEvidence : row.feedback_type === "dislike" ? dislikedEvidence : null;
+      row.feedback_type === "like"
+        ? likedEvidence
+        : row.feedback_type === "dislike"
+          ? dislikedEvidence
+          : null;
     if (!evidence) continue;
     for (const itemId of itemIdsByOutfit.get(row.outfit_id) ?? []) {
       evidence.set(itemId, (evidence.get(itemId) ?? 0) + 1);
@@ -84,6 +88,11 @@ async function loadPreferenceContext(admin: AdminClient, userId: string) {
   };
 }
 
+// Versioned publish: writes the new version's rows alongside any still-active
+// prior version (never deletes first). finalize_wardrobe_compilation() is the
+// only thing that flips the published-version pointer, after verifying this
+// count, so a crash mid-write here just leaves inert unpublished rows instead
+// of a deleted-then-never-replaced library.
 async function writeCandidates(
   admin: AdminClient,
   userId: string,
@@ -91,8 +100,6 @@ async function writeCandidates(
   compiledWardrobeVersion: string,
   candidates: readonly GeneratedOutfitCandidate[],
 ) {
-  const { error: deleteError } = await admin.from("outfit_candidates").delete().eq("user_id", userId);
-  if (deleteError) throw deleteError;
   if (candidates.length === 0) return;
 
   const { data: insertedCandidates, error: insertCandidatesError } = await admin
@@ -104,6 +111,8 @@ async function writeCandidates(
         compiled_wardrobe_version: compiledWardrobeVersion,
         job_id: jobId,
         occasion_tags: candidate.occasionTags,
+        occasion_category: candidate.occasionCategory,
+        weather_tags: candidate.weatherTags,
         formality_level: candidate.formalityLevel,
         warmth_level: candidate.warmthLevel,
         color_harmony: candidate.colorHarmony,
@@ -133,8 +142,26 @@ async function writeCandidates(
   });
   if (candidateItemRows.length === 0) return;
 
-  const { error: insertItemsError } = await admin.from("outfit_candidate_items").insert(candidateItemRows);
+  const { error: insertItemsError } = await admin
+    .from("outfit_candidate_items")
+    .insert(candidateItemRows);
   if (insertItemsError) throw insertItemsError;
+}
+
+async function discardUnpublishedVersion(
+  admin: AdminClient,
+  userId: string,
+  compiledWardrobeVersion: string,
+) {
+  // Best-effort cleanup of a version that failed before finalize() could
+  // publish it. Never referenced by wardrobe_compilation_state, so leaving it
+  // behind would only ever waste space, not serve stale/wrong data — but
+  // clean it up anyway so failed attempts don't accumulate.
+  await admin
+    .from("outfit_candidates")
+    .delete()
+    .eq("user_id", userId)
+    .eq("compiled_wardrobe_version", compiledWardrobeVersion);
 }
 
 export async function compileWardrobeForUser(userId: string, jobId: string) {
@@ -144,89 +171,62 @@ export async function compileWardrobeForUser(userId: string, jobId: string) {
     throw new Error("Wardrobe compilation job does not belong to this user.");
   }
 
+  const compiledWardrobeVersion = randomUUID();
   try {
-    const [{ data: initialState }, { data: itemRows, error: itemsError }, preferences] = await Promise.all([
-      admin
-        .from("wardrobe_compilation_state")
-        .select("pending_change_count")
-        .eq("user_id", userId)
-        .maybeSingle(),
-      admin
-        .from("wardrobe_items")
-        .select("*")
-        .eq("user_id", userId)
-        .eq("status", "active")
-        .eq("availability_status", "available")
-        .is("deleted_at", null)
-        .limit(500),
-      loadPreferenceContext(admin, userId),
-    ]);
+    const [{ data: initialState }, { data: itemRows, error: itemsError }, preferences] =
+      await Promise.all([
+        admin
+          .from("wardrobe_compilation_state")
+          .select("pending_change_count")
+          .eq("user_id", userId)
+          .maybeSingle(),
+        admin
+          .from("wardrobe_items")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("status", "active")
+          .eq("availability_status", "available")
+          .is("deleted_at", null)
+          .limit(500),
+        loadPreferenceContext(admin, userId),
+      ]);
     if (itemsError) throw itemsError;
     const startChangeCount = (initialState?.pending_change_count as number | undefined) ?? 0;
 
     const items = (itemRows ?? []).map((row) => parseWardrobeRow(row as Record<string, unknown>));
     const candidates = generateOutfitCandidates(items, { preferences });
-    const compiledWardrobeVersion = randomUUID();
 
     await writeCandidates(admin, userId, jobId, compiledWardrobeVersion, candidates);
 
-    const { data: latestState } = await admin
-      .from("wardrobe_compilation_state")
-      .select("pending_change_count")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const changedDuringRun =
-      ((latestState?.pending_change_count as number | undefined) ?? 0) > startChangeCount;
-
-    await admin.from("wardrobe_compilation_state").upsert(
+    const { data: finalizeResult, error: finalizeError } = await admin.rpc(
+      "finalize_wardrobe_compilation",
       {
-        user_id: userId,
-        last_compiled_at: new Date().toISOString(),
-        compiled_wardrobe_version: compiledWardrobeVersion,
-        candidate_count: candidates.length,
-        scoring_model_version: "v1",
-        ...(changedDuringRun ? {} : { dirty_since: null }),
+        p_job_id: jobId,
+        p_user_id: userId,
+        p_new_version: compiledWardrobeVersion,
+        p_start_change_count: startChangeCount,
+        p_candidate_count: candidates.length,
+        p_items_considered: items.length,
       },
-      { onConflict: "user_id" },
     );
-
-    await admin
-      .from("wardrobe_compilation_jobs")
-      .update({
-        status: "complete",
-        items_considered: items.length,
-        candidates_generated: candidates.length,
-        completed_at: new Date().toISOString(),
-        locked_at: null,
-        locked_until: null,
-        next_attempt_at: null,
-        error_code: null,
-        error_message: null,
-      })
-      .eq("id", jobId)
-      .eq("user_id", userId);
-
-    if (changedDuringRun) {
-      // Best-effort follow-up: the debounce slot just freed above, so this
-      // insert should succeed. If it races with the trigger's own insert and
-      // hits the unique index, that's fine — one queued job is all we need.
-      try {
-        await admin
-          .from("wardrobe_compilation_jobs")
-          .insert({ user_id: userId, status: "queued", trigger_reason: "item_change" });
-      } catch {
-        // Ignored: a duplicate queued row means the work is already covered.
-      }
-    }
+    if (finalizeError) throw finalizeError;
 
     return {
       jobId,
       status: "complete" as const,
       candidatesGenerated: candidates.length,
       itemsConsidered: items.length,
+      changedDuringRun: Boolean(
+        finalizeResult &&
+          typeof finalizeResult === "object" &&
+          "changed_during_run" in finalizeResult
+          ? finalizeResult.changed_during_run
+          : false,
+      ),
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown wardrobe compilation error";
+    await discardUnpublishedVersion(admin, userId, compiledWardrobeVersion);
     await admin
       .from("wardrobe_compilation_jobs")
       .update({

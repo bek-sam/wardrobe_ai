@@ -109,7 +109,9 @@ export async function explainWardrobeCandidate(input: ExplainWardrobeCandidateIn
       recentWear: input.recentWear ?? null,
       items: input.items,
     }),
-    text: { format: zodTextFormat(explainOutfitCandidateResultSchema, "wardrobe_outfit_explanation") },
+    text: {
+      format: zodTextFormat(explainOutfitCandidateResultSchema, "wardrobe_outfit_explanation"),
+    },
     safety_identifier: input.userId,
     store: false,
   });

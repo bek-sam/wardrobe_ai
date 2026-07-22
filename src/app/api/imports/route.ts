@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createImportJobSchema } from "@/features/intake/schemas/import-job";
 import { withSignedImportUrls } from "@/features/intake/server/job-view";
 import { ApiError, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { getServerEnvironment } from "@/lib/env/server";
 import { assertOwnedStoragePath } from "@/lib/storage/private-images";
@@ -34,6 +35,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const input = await parseJson(request, createImportJobSchema);
     assertOwnedStoragePath(input.originalImagePath, viewer.id);

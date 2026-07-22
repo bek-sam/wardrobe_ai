@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { parseRouteParams, throwDatabaseError, throwNotFound } from "@/app/api/_lib/route";
 import { ApiError, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { promoteConfirmedImportAssets } from "@/lib/imports/asset-promotion";
 import { createClient } from "@/lib/supabase/server";
@@ -21,8 +22,10 @@ const confirmationResultSchema = z
     message: "Confirmed item IDs must be unique.",
   });
 
-export async function POST(_request: Request, context: Context) {
+export async function POST(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const [{ jobId }, supabase] = await Promise.all([
       parseRouteParams(context.params, importJobParamsSchema),

@@ -1,6 +1,11 @@
 import { wardrobeItemSchema } from "@/features/wardrobe/schemas";
 import type { WardrobeItem, WardrobeItemRole } from "@/features/wardrobe/types";
-import { getHardFilterReasons, outfitCombinationKey, scoreWardrobeCandidate } from "@/lib/recommendation";
+import {
+  getHardFilterReasons,
+  outfitCombinationKey,
+  resolveOccasionContext,
+  scoreWardrobeCandidate,
+} from "@/lib/recommendation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ClothingConstraints } from "@/lib/weather";
 
@@ -26,9 +31,12 @@ export interface RetrievedOutfitCandidateItem {
   sort_order: number;
 }
 
+export type RetrievedOutfitSelectionReason = "safest" | "underused" | "expressive";
+
 export interface RetrievedOutfitCandidate {
   candidateId: string;
   score: number;
+  selectionReason: RetrievedOutfitSelectionReason;
   items: RetrievedOutfitCandidateItem[];
   resolvedItems: WardrobeItem[];
 }
@@ -36,7 +44,12 @@ export interface RetrievedOutfitCandidate {
 // Below this, an LLM-composed outfit is more likely to serve the user well
 // than the best available stored combination.
 const RETRIEVAL_MIN_SCORE = 0.55;
-const RETRIEVAL_POOL_LIMIT = 25;
+// A much wider prefiltered pool than a flat "top 25 by static score": live
+// weather/occasion/exposure filtering runs across this whole pool instead of
+// truncating before it gets a chance to apply.
+const RETRIEVAL_POOL_LIMIT = 150;
+const OCCASION_CATEGORY_MIN_CONFIDENCE = 0.5;
+const MAX_RESULTS = 3;
 const RECENT_SUGGESTION_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 
 function parseWardrobeRow(row: Record<string, unknown>): WardrobeItem {
@@ -44,37 +57,52 @@ function parseWardrobeRow(row: Record<string, unknown>): WardrobeItem {
   return wardrobeItemSchema.parse(Object.fromEntries(keys.map((key) => [key, row[key]])));
 }
 
+interface EvaluatedCandidate {
+  candidateId: string;
+  score: number;
+  preferenceMatch: number;
+  timesSuggested: number;
+  items: RetrievedOutfitCandidateItem[];
+  resolvedItems: WardrobeItem[];
+  combinationKey: string;
+}
+
 /**
- * Looks for a precomputed outfit_candidates row that fits this request instead
- * of asking the LLM to compose one from scratch. Returns null whenever the
- * library is missing, stale, or nothing in it clears the quality bar — the
- * caller should fall back to full composition in that case.
+ * Looks for precomputed outfit_candidates rows that fit this request instead
+ * of asking the LLM to compose one from scratch. Returns up to 3 diverse,
+ * quality-gated alternatives (safest, underused, expressive) ordered with the
+ * safest pick first; an empty array means the caller should fall back to full
+ * composition.
  */
-export async function retrieveStoredOutfitCandidate(
+export async function retrieveStoredOutfitCandidates(
   input: RetrieveStoredOutfitInput,
-): Promise<RetrievedOutfitCandidate | null> {
+): Promise<RetrievedOutfitCandidate[]> {
   const admin = createAdminClient();
   const { data: state } = await admin
     .from("wardrobe_compilation_state")
     .select("dirty_since, compiled_wardrobe_version")
     .eq("user_id", input.userId)
     .maybeSingle();
-  if (!state || state.dirty_since || !state.compiled_wardrobe_version) return null;
+  if (!state || state.dirty_since || !state.compiled_wardrobe_version) return [];
+
+  const occasionContext = resolveOccasionContext(input.occasion);
 
   let query = admin
     .from("outfit_candidates")
     .select(
-      "id, times_suggested, last_suggested_at, outfit_candidate_items(item_id, role, sort_order)",
+      "id, times_suggested, last_suggested_at, preference_match, outfit_candidate_items(item_id, role, sort_order)",
     )
     .eq("user_id", input.userId)
     .eq("status", "active")
     .eq("compiled_wardrobe_version", state.compiled_wardrobe_version)
     .order("total_score", { ascending: false })
     .limit(RETRIEVAL_POOL_LIMIT);
-  if (input.occasion) query = query.contains("occasion_tags", [input.occasion]);
+  if (occasionContext.confidence >= OCCASION_CATEGORY_MIN_CONFIDENCE) {
+    query = query.eq("occasion_category", occasionContext.category);
+  }
 
   const { data: rows, error } = await query;
-  if (error || !rows || rows.length === 0) return null;
+  if (error || !rows || rows.length === 0) return [];
 
   const allItemIds = [
     ...new Set(
@@ -85,7 +113,7 @@ export async function retrieveStoredOutfitCandidate(
       ),
     ),
   ];
-  if (allItemIds.length === 0) return null;
+  if (allItemIds.length === 0) return [];
 
   const { data: itemRows, error: itemsError } = await admin
     .from("wardrobe_items")
@@ -95,13 +123,13 @@ export async function retrieveStoredOutfitCandidate(
     .eq("availability_status", "available")
     .is("deleted_at", null)
     .in("id", allItemIds);
-  if (itemsError || !itemRows) return null;
+  if (itemsError || !itemRows) return [];
 
   const itemsById = new Map(
     itemRows.map((row) => [row.id as string, parseWardrobeRow(row as Record<string, unknown>)]),
   );
 
-  let best: RetrievedOutfitCandidate | null = null;
+  const evaluated: EvaluatedCandidate[] = [];
   for (const row of rows) {
     const memberRows = (row.outfit_candidate_items ?? []) as RetrievedOutfitCandidateItem[];
     if (memberRows.length === 0) continue;
@@ -148,36 +176,74 @@ export async function retrieveStoredOutfitCandidate(
     const exposurePenalty = Math.min(0.3, timesSuggested * 0.05) + (recentlySuggested ? 0.2 : 0);
     const finalScore = Math.max(0, Math.min(1, liveScore - exposurePenalty));
 
-    if (!best || finalScore > best.score) {
-      best = {
-        candidateId: row.id as string,
-        score: finalScore,
-        items: memberRows,
-        resolvedItems,
-      };
+    evaluated.push({
+      candidateId: row.id as string,
+      score: finalScore,
+      preferenceMatch: (row.preference_match as number | null) ?? 0,
+      timesSuggested,
+      items: memberRows,
+      resolvedItems,
+      combinationKey: outfitCombinationKey(memberRows.map((member) => member.item_id)),
+    });
+  }
+
+  const qualifying = evaluated
+    .filter((candidate) => candidate.score >= RETRIEVAL_MIN_SCORE)
+    .sort((first, second) => second.score - first.score);
+  if (qualifying.length === 0) return [];
+
+  const results: RetrievedOutfitCandidate[] = [];
+  const usedCombinationKeys = new Set<string>();
+
+  function take(candidate: EvaluatedCandidate | undefined, reason: RetrievedOutfitSelectionReason) {
+    if (!candidate) return false;
+    if (usedCombinationKeys.has(candidate.combinationKey)) return false;
+    usedCombinationKeys.add(candidate.combinationKey);
+    results.push({
+      candidateId: candidate.candidateId,
+      score: candidate.score,
+      selectionReason: reason,
+      items: candidate.items,
+      resolvedItems: candidate.resolvedItems,
+    });
+    return true;
+  }
+
+  // Safest: the single highest-scoring qualifying candidate.
+  take(qualifying[0], "safest");
+
+  // Underused: the least-suggested qualifying candidate that isn't already picked.
+  if (results.length < MAX_RESULTS) {
+    const byUnderused = [...qualifying].sort(
+      (first, second) => first.timesSuggested - second.timesSuggested || second.score - first.score,
+    );
+    for (const candidate of byUnderused) {
+      if (take(candidate, "underused")) break;
     }
   }
 
-  if (!best || best.score < RETRIEVAL_MIN_SCORE) return null;
-  return best;
+  // Expressive: the candidate whose compile-time preference match scored
+  // highest that isn't already picked.
+  if (results.length < MAX_RESULTS) {
+    const byPreference = [...qualifying].sort(
+      (first, second) =>
+        second.preferenceMatch - first.preferenceMatch || second.score - first.score,
+    );
+    for (const candidate of byPreference) {
+      if (take(candidate, "expressive")) break;
+    }
+  }
+
+  return results.slice(0, MAX_RESULTS);
 }
 
 export async function markOutfitCandidateSuggested(userId: string, candidateId: string) {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("outfit_candidates")
-    .select("times_suggested")
-    .eq("id", candidateId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  await admin
-    .from("outfit_candidates")
-    .update({
-      times_suggested: ((data?.times_suggested as number | null) ?? 0) + 1,
-      last_suggested_at: new Date().toISOString(),
-    })
-    .eq("id", candidateId)
-    .eq("user_id", userId);
+  const { error } = await admin.rpc("increment_outfit_candidate_exposure", {
+    p_candidate_id: candidateId,
+    p_user_id: userId,
+  });
+  if (error) throw error;
 }
 
 export interface RecordFallbackOutfitCandidateInput {
@@ -188,45 +254,28 @@ export interface RecordFallbackOutfitCandidateInput {
 
 /**
  * Opportunistically grows the library with an outfit the LLM had to compose
- * from scratch because nothing stored fit the request. Best-effort: failures
- * (including "this combination is already in the library") are swallowed so
- * they can never affect the user-facing response.
+ * from scratch because nothing stored fit the request. The insert is now one
+ * atomic RPC call (record_fallback_outfit_candidate) instead of two separate,
+ * non-transactional inserts, so a failure can never leave an active candidate
+ * with zero items. Best-effort: failures are swallowed so they can never
+ * affect the user-facing response.
  */
 export async function recordFallbackOutfitCandidate(input: RecordFallbackOutfitCandidateInput) {
   try {
     const admin = createAdminClient();
-    const { data: state } = await admin
-      .from("wardrobe_compilation_state")
-      .select("dirty_since, compiled_wardrobe_version")
-      .eq("user_id", input.userId)
-      .maybeSingle();
-    if (!state?.compiled_wardrobe_version || state.dirty_since) return;
-
+    const occasionContext = resolveOccasionContext(input.occasion);
     const combinationKey = outfitCombinationKey(input.items.map((item) => item.item_id));
-    const { data: inserted, error } = await admin
-      .from("outfit_candidates")
-      .insert({
-        user_id: input.userId,
-        combination_key: combinationKey,
-        compiled_wardrobe_version: state.compiled_wardrobe_version,
-        status: "active",
-        generated_by: "fallback_llm",
-        occasion_tags: input.occasion ? [input.occasion] : [],
-        total_score: 0.6,
-      })
-      .select("id")
-      .maybeSingle();
-    if (error || !inserted) return;
-
-    await admin.from("outfit_candidate_items").insert(
-      input.items.map((item, index) => ({
-        candidate_id: inserted.id,
+    await admin.rpc("record_fallback_outfit_candidate", {
+      p_user_id: input.userId,
+      p_combination_key: combinationKey,
+      p_occasion_category: occasionContext.category,
+      p_occasion_tags: input.occasion ? [input.occasion] : [],
+      p_items: input.items.map((item, index) => ({
         item_id: item.item_id,
-        user_id: input.userId,
         role: item.role,
         sort_order: item.sort_order ?? index,
       })),
-    );
+    });
   } catch {
     // Never let library growth affect the user-facing generation response.
   }

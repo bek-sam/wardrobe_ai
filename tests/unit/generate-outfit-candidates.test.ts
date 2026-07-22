@@ -42,6 +42,15 @@ const items = [
     name: "Shoes",
     category: "shoes",
     layer_role: "shoes",
+    warmth_level: 2,
+  }),
+  makeWardrobeItem({
+    id: ITEM_IDS.shoesB,
+    name: "Shoes B",
+    category: "shoes",
+    layer_role: "shoes",
+    warmth_level: 2,
+    water_resistance: "waterproof",
   }),
   makeWardrobeItem({
     id: ITEM_IDS.accessory,
@@ -91,5 +100,63 @@ describe("generateOutfitCandidates", () => {
   it("returns nothing when no foundation (dress, or top+bottom) exists", () => {
     const shoesOnly = items.filter((item) => item.id === ITEM_IDS.shoes);
     expect(generateOutfitCandidates(shoesOnly)).toEqual([]);
+  });
+
+  it("assigns a normalized occasionCategory matching the bucket key", () => {
+    const candidates = generateOutfitCandidates(items, { maxCandidates: 200 });
+    for (const candidate of candidates) {
+      expect(candidate.occasionCategory).toBe(candidate.bucketKey);
+    }
+  });
+
+  it("tags weather_tags from aggregate warmth and marks rain-safe outfits", () => {
+    const candidates = generateOutfitCandidates(items, { maxCandidates: 200 });
+    const withRainSafeShoes = candidates.filter((candidate) =>
+      candidate.items.some((entry) => entry.itemId === ITEM_IDS.shoesB),
+    );
+    expect(withRainSafeShoes.length).toBeGreaterThan(0);
+    for (const candidate of withRainSafeShoes) {
+      expect(candidate.weatherTags).toContain("rain_safe");
+    }
+    for (const candidate of candidates) {
+      if (candidate.warmthLevel !== null) expect(candidate.weatherTags.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("produces multiple footwear variants for the same foundation and bucket", () => {
+    const buckets: CompilationBucket[] = [
+      { key: "casual", occasionTags: ["casual"], targetFormality: 1 },
+    ];
+    const candidates = generateOutfitCandidates(items, { buckets, maxCandidates: 200 });
+    const dressOutfits = candidates.filter((candidate) =>
+      candidate.items.some((entry) => entry.itemId === ITEM_IDS.dress),
+    );
+    const shoeIdsUsed = new Set(
+      dressOutfits.flatMap((candidate) =>
+        candidate.items
+          .filter((entry) => entry.itemId === ITEM_IDS.shoes || entry.itemId === ITEM_IDS.shoesB)
+          .map((entry) => entry.itemId),
+      ),
+    );
+    expect(shoeIdsUsed.has(ITEM_IDS.shoes)).toBe(true);
+    expect(shoeIdsUsed.has(ITEM_IDS.shoesB)).toBe(true);
+  });
+
+  it("produces both with-layer and without-layer variants when the layer is a good fit", () => {
+    const buckets: CompilationBucket[] = [
+      { key: "casual", occasionTags: ["casual"], targetFormality: 1 },
+    ];
+    const candidates = generateOutfitCandidates(items, { buckets, maxCandidates: 200 });
+    const dressOutfits = candidates.filter((candidate) =>
+      candidate.items.some((entry) => entry.itemId === ITEM_IDS.dress),
+    );
+    const withLayer = dressOutfits.some((candidate) =>
+      candidate.items.some((entry) => entry.itemId === ITEM_IDS.layer),
+    );
+    const withoutLayer = dressOutfits.some(
+      (candidate) => !candidate.items.some((entry) => entry.itemId === ITEM_IDS.layer),
+    );
+    expect(withLayer).toBe(true);
+    expect(withoutLayer).toBe(true);
   });
 });

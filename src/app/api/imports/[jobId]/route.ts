@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { withSignedImportUrls } from "@/features/intake/server/job-view";
 import { ApiError, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -32,8 +33,10 @@ export async function GET(_request: Request, context: Context) {
   }
 }
 
-export async function DELETE(_request: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [{ jobId }, viewer] = await Promise.all([context.params, requireViewer()]);
     const admin = createAdminClient();
     const { data, error } = await admin

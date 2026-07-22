@@ -10,6 +10,12 @@ export {
   outfitFoundationKey,
   selectBalancedOutfitPlans,
 } from "./planner";
+export {
+  OCCASION_CATEGORIES,
+  occasionCategoryProfile,
+  occasionCategoryTags,
+  resolveOccasionContext,
+} from "./occasion-context";
 export { mapResearchConfidence } from "./research-confidence";
 export { rankWardrobeCandidates, scoreWardrobeCandidate } from "./scoring";
 export { validateGeneratedOutfit } from "./outfit-validation";
@@ -29,6 +35,12 @@ export type {
   HardFilterResult,
 } from "./filters";
 export type { LayeringAnalysis } from "./layering";
+export type {
+  ActivityLevel,
+  IndoorOutdoor,
+  OccasionCategory,
+  OccasionContext,
+} from "./occasion-context";
 export type {
   BalancedPlannerOptions,
   BalancedPlannerResult,

@@ -7,6 +7,11 @@ The Supabase schema treats `profiles` as the ownership root for private applicat
 1. `202607210001_core_wardrobe_imports.sql` creates profiles, wardrobe records, image lineage, durable import jobs/candidates, and product research.
 2. `202607210002_outfits_agents_operations.sql` creates outfits, planning, immutable wear history, feedback, chat, agent summaries, idempotency, and rate-limit support.
 3. `202607210003_security_storage_account.sql` enables RLS, creates private buckets, grants the minimum client privileges, and adds account lifecycle helpers.
+4. `202607210004_stylist_conversation_history.sql` adds bounded stylist conversation history.
+5. `202607210005_fix_reserved_time_keyword.sql` fixes a reserved-keyword variable name in rate-limit/idempotency functions.
+6. `202607210006_wardrobe_compilation.sql` creates the precomputed outfit-candidate library (`outfit_candidates`, `outfit_candidate_items`, `wardrobe_compilation_state`/`jobs`).
+7. `202607210007_account_deletion_workflow.sql` adds the durable, resumable account-deletion request table and RPCs.
+8. `202607210008_wardrobe_compilation_v2.sql` adds normalized `occasion_category`, atomic finalize/exposure/fallback RPCs, the manual-recompile RPC, and the service-role batch-claim RPC for a real background worker.
 
 Migrations are additive and use `if not exists`, replaceable functions, stable trigger names, and replaceable policies where practical. Every private table enables RLS in the migration that creates it; owner policies arrive in migration 003, so a partially applied schema remains deny-by-default. Apply the files with the Supabase CLI rather than pasting them out of order.
 
@@ -128,6 +133,16 @@ Authenticated sessions have `SELECT` only on `import_jobs`, `import_job_candidat
 
 Both RPCs lock relevant rows, hash and scope client idempotency keys to the item/outfit resource, append history, and update `wardrobe_items.wear_count`/`last_worn_at` in the same transaction. Marking a planned outfit worn also updates the plan.
 
+### Precomputed outfit-candidate library
+
+`wardrobe_compilation_state` (one row per user) tracks the currently published `compiled_wardrobe_version`, `candidate_count`, `last_compiled_at`, and a `dirty_since`/`pending_change_count` pair a trigger on `wardrobe_items` maintains automatically. `wardrobe_compilation_jobs` is the durable, leased queue: at most one `queued`/`running` job per user (`wardrobe_compilation_jobs_user_active_unique`), retried with backoff up to a bounded attempt budget before landing in `failed`.
+
+- `request_wardrobe_recompilation()` is the authenticated manual-recompile entry point: debounced against an already-active job, rate-limited via `consume_rate_limit`, and returns `{status: 'queued'|'already_running'|'up_to_date', job_id}`.
+- `claim_next_own_wardrobe_compilation_job(lease_seconds)` lets an authenticated interactive route process its own queued job; `claim_wardrobe_compilation_jobs(limit, lease_seconds)` is the service-role batch claim a scheduler-driven worker uses instead (mirrors `claim_import_jobs`).
+- `finalize_wardrobe_compilation(...)` is the only writer of the published-version pointer: it verifies the job's lease and the new version's row count, flips `wardrobe_compilation_state` atomically, archives the prior version, and compare-and-swaps `pending_change_count` to decide whether to clear `dirty_since` or queue a follow-up job.
+
+`outfit_candidates` (versioned by `compiled_wardrobe_version`, one active version served at a time) and `outfit_candidate_items` store the generated combinations; `occasion_category` is a normalized category (see `resolveOccasionContext` in `src/lib/recommendation`) distinct from the free-text `occasion_tags`, and `weather_tags` records which temperature bands/rain-safety the outfit's own garments cover. `generated_by` is `compilation` for the precompiled library or `fallback_llm` for outfits the stylist had to compose live; `record_fallback_outfit_candidate(...)` and `increment_outfit_candidate_exposure(...)` are the only mutation paths, both atomic RPCs (never a read-modify-write or a multi-call insert that could leave a candidate with zero items).
+
 ### Chat and observability
 
 `messages` contains only user-visible content and structured UI results. Never store hidden chain-of-thought. `agent_runs` contains safe summaries, tool names/results summaries, model name, latency, usage, and error code; it must not contain API keys, original private images, or raw sensitive prompts. Authenticated users may read only their own agent runs; inserts and all later mutations are server/service-role operations so usage and audit records remain trustworthy.
@@ -158,13 +173,14 @@ Hard-deleting image, import-job, or import-candidate rows enqueues unreferenced 
 - `account_deletion_manifest()` returns row counts and every owned Storage object.
 - `list_my_storage_objects()` returns the same paths as rows for batch removal.
 
-Recommended deletion order:
+Deletion is a durable, resumable two-step workflow tracked in `account_deletion_requests` (see `202607210007_account_deletion_workflow.sql`), not one synchronous request:
 
-1. Re-authenticate the user.
-2. Generate an export if requested.
-3. Read the deletion manifest.
-4. Delete every listed object through the Supabase Storage API.
-5. Delete the Auth user through the Admin API. The foreign-key cascade removes all relational data.
+1. The route re-verifies the password (`supabase.auth.signInWithPassword`) before doing anything destructive.
+2. `start_account_deletion()` durably records the request and enqueues every owned Storage object into the existing `storage_deletion_queue` (idempotent: retrying re-enqueues the same objects rather than duplicating work), then `mark_account_deletion_auth_pending()` advances the row to `deleting_auth_user`.
+3. The route deletes the Auth user through the Admin API; the foreign-key cascade removes all relational data. Storage bytes are removed asynchronously afterward by the existing `claim_storage_deletion_tasks` worker, the same one that drains wardrobe-image/import cleanup.
+4. The route marks the request `complete`.
+
+`account_deletion_requests` intentionally has no foreign key to `profiles` (like `storage_deletion_queue`), so the audit row survives the Auth-user cascade. A crash between steps 2 and 3 leaves a `deleting_auth_user` row that a retried `DELETE /api/account` call resumes instead of losing track of.
 
 `delete_my_relational_data(user_id_as_text)` exists as a narrowly confirmed fallback, but does not remove Storage bytes or the Auth user and should not be the normal account-deletion path.
 

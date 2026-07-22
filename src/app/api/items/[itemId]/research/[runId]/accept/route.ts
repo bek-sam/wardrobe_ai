@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { acceptResearchSchema } from "@/features/research/schemas";
 import { ApiError, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createClient } from "@/lib/supabase/server";
 
@@ -8,6 +9,8 @@ type Context = { params: Promise<{ itemId: string; runId: string }> };
 
 export async function POST(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [{ itemId, runId }, viewer, input, supabase] = await Promise.all([
       context.params,
       requireViewer(),

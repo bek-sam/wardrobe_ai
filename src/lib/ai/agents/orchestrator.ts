@@ -1,8 +1,10 @@
+import { after } from "next/server";
+
 import { explainWardrobeCandidate, runStylistAgent } from "@/lib/ai/agents/stylist-agent";
 import {
   markOutfitCandidateSuggested,
   recordFallbackOutfitCandidate,
-  retrieveStoredOutfitCandidate,
+  retrieveStoredOutfitCandidates,
 } from "@/lib/ai/agents/retrieve-outfit-candidate";
 import { getPreferences } from "@/lib/ai/tools/get-preferences";
 import { getWardrobeCandidates } from "@/lib/ai/tools/get-wardrobe";
@@ -49,7 +51,7 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
       "Weather is temporarily unavailable; this look is based on occasion and preferences.";
   }
 
-  const retrieved = await retrieveStoredOutfitCandidate({
+  const retrievedAlternatives = await retrieveStoredOutfitCandidates({
     userId: input.userId,
     occasion: input.occasion,
     targetFormality: input.targetFormality ?? style.preferred_formality ?? undefined,
@@ -61,8 +63,12 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
       likedItemIds: feedback.likedItemIds,
       dislikedItemIds: feedback.dislikedItemIds,
     },
-  }).catch(() => null);
+  }).catch(() => []);
 
+  // retrieveStoredOutfitCandidates ranks the safest pick first; the other
+  // (underused/expressive) alternatives are computed but not yet surfaced in
+  // the single-outfit response this endpoint returns today.
+  const retrieved = retrievedAlternatives[0];
   if (retrieved) {
     const retrievedResult = await tryServeRetrievedOutfit({
       input,
@@ -181,11 +187,13 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
     .select("id")
     .maybeSingle();
 
-  void recordFallbackOutfitCandidate({
-    userId: input.userId,
-    occasion: input.occasion,
-    items: validation.outfit.items,
-  });
+  after(() =>
+    recordFallbackOutfitCandidate({
+      userId: input.userId,
+      occasion: input.occasion,
+      items: validation.outfit.items,
+    }),
+  );
 
   return {
     generationId: recordedRun?.id ?? null,
@@ -204,7 +212,7 @@ type TryServeRetrievedOutfitInput = {
   feedback: Awaited<ReturnType<typeof getPreferences>>["feedback"];
   weather: Awaited<ReturnType<typeof getWeatherForStyling>>;
   weatherWarning: string | null;
-  retrieved: NonNullable<Awaited<ReturnType<typeof retrieveStoredOutfitCandidate>>>;
+  retrieved: Awaited<ReturnType<typeof retrieveStoredOutfitCandidates>>[number];
 };
 
 // Asks the model only to explain an already-selected candidate instead of
@@ -310,7 +318,11 @@ async function tryServeRetrievedOutfit({
       .select("id")
       .maybeSingle();
 
-    void markOutfitCandidateSuggested(input.userId, retrieved.candidateId);
+    after(() =>
+      markOutfitCandidateSuggested(input.userId, retrieved.candidateId).catch(() => {
+        // Exposure tracking is a non-critical optimization; never surface this.
+      }),
+    );
 
     return {
       generationId: recordedRun?.id ?? null,

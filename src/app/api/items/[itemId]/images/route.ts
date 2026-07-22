@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { itemParamsSchema } from "@/app/api/_lib/schemas";
 import { parseRouteParams } from "@/app/api/_lib/route";
 import { ApiError, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { getServerEnvironment } from "@/lib/env/server";
 import { validateAndNormalizeImage } from "@/lib/image/validation";
@@ -21,6 +22,8 @@ type Context = { params: Promise<{ itemId: string }> };
 
 export async function POST(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const { itemId } = await parseRouteParams(context.params, itemParamsSchema);
     const formData = await request.formData();

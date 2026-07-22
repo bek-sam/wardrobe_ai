@@ -6,6 +6,7 @@ import {
   throwNotFound,
 } from "@/app/api/_lib/route";
 import { ok, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createClient } from "@/lib/supabase/server";
 
@@ -13,6 +14,8 @@ type Context = { params: Promise<{ itemId: string }> };
 
 export async function POST(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const viewer = await requireViewer();
     const { itemId } = await parseRouteParams(context.params, itemParamsSchema);
     const input = await parseJson(request, markItemWornSchema);

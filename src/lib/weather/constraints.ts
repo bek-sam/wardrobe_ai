@@ -33,7 +33,7 @@ export function classifyTemperature(temperatureC: number): TemperatureBand {
   return "extreme_hot";
 }
 
-function warmthTargets(band: TemperatureBand) {
+export function warmthTargets(band: TemperatureBand) {
   switch (band) {
     case "extreme_cold":
       return { targetWarmthLevel: 5, minimumOutfitWarmth: 4, maximumItemWarmth: 5 };

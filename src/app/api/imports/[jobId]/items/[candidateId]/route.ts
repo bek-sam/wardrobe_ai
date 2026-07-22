@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { updateImportCandidateSchema } from "@/features/intake/schemas/import-job";
 import { ApiError, parseJson, routeError } from "@/lib/api/response";
+import { rejectUntrustedOrigin } from "@/lib/api/origin";
 import { requireViewer } from "@/lib/auth/viewer";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -8,6 +9,8 @@ type Context = { params: Promise<{ jobId: string; candidateId: string }> };
 
 export async function PATCH(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [{ jobId, candidateId }, viewer, input] = await Promise.all([
       context.params,
       requireViewer(),
@@ -46,8 +49,10 @@ export async function PATCH(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(_request: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   try {
+    const rejected = rejectUntrustedOrigin(request);
+    if (rejected) return rejected;
     const [{ jobId, candidateId }, viewer] = await Promise.all([context.params, requireViewer()]);
     const admin = createAdminClient();
     const { data, error } = await admin
