@@ -5,6 +5,10 @@ const optionalString = z.preprocess(emptyToUndefined, z.string().min(1).optional
 const optionalUrl = z.preprocess(emptyToUndefined, z.url().optional());
 const optionalPositiveInteger = (fallback: number) =>
   z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(fallback));
+const optionalUnboundedPositiveInteger = z.preprocess(
+  emptyToUndefined,
+  z.coerce.number().int().positive().optional(),
+);
 
 const serverEnvironmentSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
@@ -30,6 +34,9 @@ const serverEnvironmentSchema = z.object({
   SIGNED_URL_TTL_SECONDS: optionalPositiveInteger(300),
   IMPORT_WORKER_SECRET: optionalString,
   CRON_SECRET: optionalString,
+  WARDROBE_COMPILATION_WORKER_SECRET: optionalString,
+  WARDROBE_COMPILATION_MAX_CANDIDATES: optionalUnboundedPositiveInteger,
+  WARDROBE_COMPILATION_MAX_FOUNDATIONS_PER_BUCKET: optionalUnboundedPositiveInteger,
   DAILY_IMAGE_LIMIT: optionalPositiveInteger(20),
   DAILY_STYLIST_LIMIT: optionalPositiveInteger(40),
   DAILY_PLANNER_LIMIT: optionalPositiveInteger(10),

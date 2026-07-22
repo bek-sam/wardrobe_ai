@@ -11,10 +11,13 @@ export {
   selectBalancedOutfitPlans,
 } from "./planner";
 export {
+  ACTIVITY_LEVELS,
+  INDOOR_OUTDOOR_VALUES,
   OCCASION_CATEGORIES,
   occasionCategoryProfile,
   occasionCategoryTags,
   resolveOccasionContext,
+  TIMES_OF_DAY,
 } from "./occasion-context";
 export { mapResearchConfidence } from "./research-confidence";
 export { rankWardrobeCandidates, scoreWardrobeCandidate } from "./scoring";
@@ -40,6 +43,7 @@ export type {
   IndoorOutdoor,
   OccasionCategory,
   OccasionContext,
+  TimeOfDay,
 } from "./occasion-context";
 export type {
   BalancedPlannerOptions,

@@ -76,13 +76,14 @@ Live retrieval (`retrieveStoredOutfitCandidates`) prefilters a wide pool by the 
 
 ## Reliability
 
-- Import, research, and storage-cleanup state, attempts, lease times, and errors are persisted.
-- Worker claims use `FOR UPDATE SKIP LOCKED`.
+- Import, research, storage-cleanup, and wardrobe-compilation state, attempts, lease times, and errors are persisted.
+- Worker claims use `FOR UPDATE SKIP LOCKED`; failed jobs retry with capped exponential backoff up to a fixed attempt limit before landing in a terminal `retry_exhausted`/dead-letter state.
 - Garment candidate IDs are deterministic per job/ordinal.
 - Save, swap, wear, research-acceptance, and plan operations use transactional RPCs.
 - Idempotency and feature-usage tables support retry safety and cost controls.
 - Agent logs contain safe summaries and usage, not image bytes, secrets, or hidden reasoning.
 - Weather failure degrades to occasion/preference styling instead of blocking a recommendation.
+- See `docs/deployment.md` for how the internal worker routes get scheduled in production, their required environment variables, and the wardrobe-compilation worker's `/health` endpoint.
 
 ## Legacy boundary
 

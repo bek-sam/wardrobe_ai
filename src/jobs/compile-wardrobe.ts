@@ -6,6 +6,7 @@ import {
   generateOutfitCandidates,
   type GeneratedOutfitCandidate,
 } from "@/lib/compilation/generate-outfit-candidates";
+import { getServerEnvironment } from "@/lib/env/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -14,7 +15,16 @@ type WardrobeCompilationJobRow = {
   id: string;
   user_id: string;
   status: string;
+  attempt_count: number;
 };
+
+// Mirrors retryAt() in process-storage-deletions.ts: capped exponential
+// backoff so a transiently-failing job (provider hiccup, DB contention)
+// doesn't get re-claimed and retried in a tight loop.
+function retryAt(attemptCount: number) {
+  const delaySeconds = Math.min(60 * 60, 30 * 2 ** Math.max(0, attemptCount - 1));
+  return new Date(Date.now() + delaySeconds * 1_000).toISOString();
+}
 
 function parseWardrobeRow(row: Record<string, unknown>): WardrobeItem {
   const keys = Object.keys(wardrobeItemSchema.shape);
@@ -24,7 +34,7 @@ function parseWardrobeRow(row: Record<string, unknown>): WardrobeItem {
 async function loadJob(admin: AdminClient, jobId: string): Promise<WardrobeCompilationJobRow> {
   const { data, error } = await admin
     .from("wardrobe_compilation_jobs")
-    .select("id, user_id, status")
+    .select("id, user_id, status, attempt_count")
     .eq("id", jobId)
     .single();
   if (error || !data) throw error ?? new Error("Wardrobe compilation job not found.");
@@ -194,7 +204,12 @@ export async function compileWardrobeForUser(userId: string, jobId: string) {
     const startChangeCount = (initialState?.pending_change_count as number | undefined) ?? 0;
 
     const items = (itemRows ?? []).map((row) => parseWardrobeRow(row as Record<string, unknown>));
-    const candidates = generateOutfitCandidates(items, { preferences });
+    const environment = getServerEnvironment();
+    const candidates = generateOutfitCandidates(items, {
+      preferences,
+      maxCandidates: environment.WARDROBE_COMPILATION_MAX_CANDIDATES,
+      maxFoundationsPerBucket: environment.WARDROBE_COMPILATION_MAX_FOUNDATIONS_PER_BUCKET,
+    });
 
     await writeCandidates(admin, userId, jobId, compiledWardrobeVersion, candidates);
 
@@ -235,7 +250,7 @@ export async function compileWardrobeForUser(userId: string, jobId: string) {
         error_message: message,
         locked_at: null,
         locked_until: null,
-        next_attempt_at: new Date(Date.now() + 30_000).toISOString(),
+        next_attempt_at: retryAt(job.attempt_count),
       })
       .eq("id", jobId)
       .eq("user_id", userId);

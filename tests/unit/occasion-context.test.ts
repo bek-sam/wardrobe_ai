@@ -47,4 +47,35 @@ describe("resolveOccasionContext", () => {
     expect(result.category).toBe("casual");
     expect(result.confidence).toBeGreaterThan(0.5);
   });
+
+  it("detects time of day independently of the occasion category", () => {
+    expect(resolveOccasionContext("dinner with friends tonight").timeOfDay).toBe("evening");
+    expect(resolveOccasionContext("brunch with the team").timeOfDay).toBe("morning");
+    expect(resolveOccasionContext("client meeting").timeOfDay).toBe("unspecified");
+  });
+
+  it("captures explicit dress-code phrasing verbatim", () => {
+    const result = resolveOccasionContext("black tie gala this weekend");
+    expect(result.dressCodeConstraints).toContain("black tie");
+  });
+
+  it("returns no dress-code constraints when none are mentioned", () => {
+    expect(resolveOccasionContext("dinner with friends").dressCodeConstraints).toEqual([]);
+  });
+
+  it("flags an unresolved question for low-confidence text", () => {
+    const result = resolveOccasionContext("xyz something unrelated");
+    expect(result.unresolvedQuestions.length).toBeGreaterThan(0);
+  });
+
+  it("asks about dress code for a formal category with none specified", () => {
+    const result = resolveOccasionContext("attending my cousin's wedding");
+    expect(result.unresolvedQuestions).toContain("Is there a specific dress code to follow?");
+  });
+
+  it("has no unresolved questions for a confident, dress-code-specified match", () => {
+    const result = resolveOccasionContext("black tie gala this weekend");
+    expect(result.confidence).toBeGreaterThan(0.5);
+    expect(result.unresolvedQuestions).toEqual([]);
+  });
 });

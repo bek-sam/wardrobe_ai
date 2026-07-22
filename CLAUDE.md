@@ -34,9 +34,10 @@ Local Supabase:
 ```bash
 npx supabase start
 npx supabase db reset      # applies supabase/migrations in order
+npm run test:integration   # Vitest against the real local instance (RLS, RPCs, concurrency); reads `supabase status` automatically
 ```
 
-CI (`.github/workflows/ci.yml`) runs format:check, lint, typecheck, unit tests, build, legacy:build, then a separate Playwright job — mirror this before pushing.
+CI (`.github/workflows/ci.yml`) runs format:check, lint, typecheck, unit tests, build, legacy:build, then separate integration (local Supabase) and Playwright jobs — mirror this before pushing.
 
 ## Environment
 

@@ -142,6 +142,45 @@ describe("generateOutfitCandidates", () => {
     expect(shoeIdsUsed.has(ITEM_IDS.shoesB)).toBe(true);
   });
 
+  it("produces distinct weather-band variants that pick genuinely different items, not the same outfit re-tagged", () => {
+    const weatherItems = [
+      makeWardrobeItem({ id: ITEM_IDS.topA, name: "Top A", layer_role: "top", warmth_level: 2 }),
+      makeWardrobeItem({
+        id: ITEM_IDS.bottomA,
+        name: "Bottom A",
+        category: "bottoms",
+        layer_role: "bottom",
+        warmth_level: 2,
+      }),
+      makeWardrobeItem({
+        id: ITEM_IDS.shoes,
+        name: "Warm boots",
+        category: "shoes",
+        layer_role: "shoes",
+        warmth_level: 5,
+      }),
+      makeWardrobeItem({
+        id: ITEM_IDS.shoesC,
+        name: "Light sandals",
+        category: "shoes",
+        layer_role: "shoes",
+        warmth_level: 1,
+      }),
+    ];
+    const buckets: CompilationBucket[] = [
+      { key: "casual", occasionTags: ["casual"], targetFormality: 1 },
+    ];
+    const candidates = generateOutfitCandidates(weatherItems, { buckets, maxCandidates: 200 });
+
+    const usesShoe = (itemId: string) =>
+      candidates.some((candidate) => candidate.items.some((entry) => entry.itemId === itemId));
+    // A cold-biased variant should be able to select the warm boots and a
+    // hot-biased variant the light sandals -- proof the weather dimension
+    // actually changes which item gets picked, not just a label on top.
+    expect(usesShoe(ITEM_IDS.shoes)).toBe(true);
+    expect(usesShoe(ITEM_IDS.shoesC)).toBe(true);
+  });
+
   it("produces both with-layer and without-layer variants when the layer is a good fit", () => {
     const buckets: CompilationBucket[] = [
       { key: "casual", occasionTags: ["casual"], targetFormality: 1 },

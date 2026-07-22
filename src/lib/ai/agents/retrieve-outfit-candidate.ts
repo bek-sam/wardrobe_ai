@@ -1,5 +1,6 @@
 import { wardrobeItemSchema } from "@/features/wardrobe/schemas";
 import type { WardrobeItem, WardrobeItemRole } from "@/features/wardrobe/types";
+import { resolveOccasionContextWithEscalation } from "@/lib/ai/agents/occasion-agent";
 import {
   getHardFilterReasons,
   outfitCombinationKey,
@@ -85,7 +86,7 @@ export async function retrieveStoredOutfitCandidates(
     .maybeSingle();
   if (!state || state.dirty_since || !state.compiled_wardrobe_version) return [];
 
-  const occasionContext = resolveOccasionContext(input.occasion);
+  const occasionContext = await resolveOccasionContextWithEscalation(input.occasion, input.userId);
 
   let query = admin
     .from("outfit_candidates")
