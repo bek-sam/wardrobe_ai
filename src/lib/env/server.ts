@@ -43,6 +43,17 @@ const serverEnvironmentSchema = z.object({
   STYLIST_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(5),
   PLANNER_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(2),
   IMAGE_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(3),
+  OPENAI_CURATOR_MODEL: optionalString,
+  WARDROBE_CURATOR_MAX_CANDIDATES: optionalPositiveInteger(40),
+  WARDROBE_CURATOR_MAX_CALLS_PER_COMPILATION: optionalPositiveInteger(2),
+  WARDROBE_CURATOR_MAX_SELECTED_PER_NEW_ITEM: optionalPositiveInteger(5),
+  DAILY_CURATOR_CALL_LIMIT: optionalPositiveInteger(20),
+  OUTFIT_ANALYSIS_CACHE_TTL_DAYS: optionalPositiveInteger(90),
+  OUTFIT_PREVIEW_WORKER_SECRET: optionalString,
+  PREVIEW_MAX_AUTO_PER_UPLOAD: optionalPositiveInteger(5),
+  PREVIEW_DAILY_LIMIT: optionalPositiveInteger(30),
+  PREVIEW_MAX_QUEUED_PER_USER: optionalPositiveInteger(5),
+  PREVIEW_FREQUENTLY_SUGGESTED_THRESHOLD: optionalPositiveInteger(3),
 });
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;

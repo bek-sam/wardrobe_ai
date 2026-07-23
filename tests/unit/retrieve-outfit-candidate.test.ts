@@ -14,7 +14,7 @@ function fakeQuery(initialResult: FakeResult) {
       calls.push({ method, args });
       return builder;
     };
-  for (const method of ["select", "eq", "order", "limit", "in", "is"]) {
+  for (const method of ["select", "eq", "neq", "order", "limit", "in", "is"]) {
     builder[method] = record(method);
   }
   builder.maybeSingle = () => {

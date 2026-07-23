@@ -2,6 +2,7 @@ import { generatedOutfitSchema } from "@/features/outfits/schemas";
 
 const intents = new Set(["packing", "planning", "insight", "item_question", "outfit_request"]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const previewStatuses = new Set(["none", "queued", "generating", "ready", "failed"]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -48,6 +49,25 @@ function publicWeather(value: unknown) {
   };
 }
 
+// Never carries a signed URL: signed URLs are short-lived and this result can
+// be persisted (stylist chat history), so only a stable candidateId + status
+// + tags survive sanitization. A viewer fetches a fresh signed URL on demand
+// from GET /api/outfit-candidates/[candidateId]/preview.
+function publicPreview(value: unknown) {
+  if (!isObject(value)) return null;
+  const candidateId = nullableString(value.candidateId, 40);
+  if (!candidateId || !uuidPattern.test(candidateId)) return null;
+  const status =
+    typeof value.status === "string" && previewStatuses.has(value.status) ? value.status : "none";
+  const styleTags = Array.isArray(value.styleTags)
+    ? value.styleTags
+        .filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim()))
+        .slice(0, 5)
+        .map((entry) => entry.slice(0, 40))
+    : [];
+  return { candidateId, status, styleTags };
+}
+
 /**
  * Reduces a stored orchestrator result to fields rendered by the product UI.
  * In particular, resolved database rows, coordinates, traces, and unknown
@@ -86,5 +106,6 @@ export function sanitizeStylistStructuredResult(value: unknown) {
     outfit: parsedOutfit.data,
     weather: publicWeather(value.weather),
     excludedItemCount,
+    preview: publicPreview(value.preview),
   };
 }

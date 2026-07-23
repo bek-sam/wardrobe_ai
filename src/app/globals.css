@@ -3305,6 +3305,49 @@ textarea:focus-visible {
   min-height: 100%;
   background: transparent;
 }
+.recommendation-preview {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.recommendation-preview__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.recommendation-preview__image {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+.recommendation-preview__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 9px;
+}
+.recommendation-preview__request {
+  align-self: start;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 11px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 9px;
+  cursor: pointer;
+}
+.recommendation-preview__request:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+.recommendation-preview small {
+  color: var(--muted);
+  font-size: 8px;
+}
 .recommendation-pieces {
   margin: 0;
   padding: 0;

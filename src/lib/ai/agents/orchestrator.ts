@@ -74,6 +74,7 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
       input,
       startedAt,
       environment,
+      profile,
       style,
       feedback,
       weather,
@@ -201,6 +202,10 @@ export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
     outfit: validation.outfit,
     weather,
     excludedItemCount: candidates.excluded.length,
+    // A freshly composed outfit has no library candidate at response time
+    // (recordFallbackOutfitCandidate creates one afterward, best-effort, via
+    // after()), so there is nothing yet to attach a preview reference to.
+    preview: null,
   };
 }
 
@@ -208,6 +213,7 @@ type TryServeRetrievedOutfitInput = {
   input: StylistOrchestratorInput;
   startedAt: number;
   environment: ReturnType<typeof getServerEnvironment>;
+  profile: Awaited<ReturnType<typeof getPreferences>>["profile"];
   style: Awaited<ReturnType<typeof getPreferences>>["style"];
   feedback: Awaited<ReturnType<typeof getPreferences>>["feedback"];
   weather: Awaited<ReturnType<typeof getWeatherForStyling>>;
@@ -223,6 +229,7 @@ async function tryServeRetrievedOutfit({
   input,
   startedAt,
   environment,
+  profile,
   style,
   feedback,
   weather,
@@ -319,9 +326,27 @@ async function tryServeRetrievedOutfit({
       .maybeSingle();
 
     after(() =>
-      markOutfitCandidateSuggested(input.userId, retrieved.candidateId).catch(() => {
-        // Exposure tracking is a non-critical optimization; never surface this.
-      }),
+      Promise.all([
+        markOutfitCandidateSuggested(input.userId, retrieved.candidateId).catch(() => {
+          // Exposure tracking is a non-critical optimization; never surface this.
+        }),
+        // Best-effort: queue a modeled preview for next time if this served
+        // candidate doesn't have one yet and the user has consented. Never
+        // runs the preview pipeline synchronously and never blocks the
+        // response returned above.
+        profile?.modeled_preview_consent && retrieved.previewStatus !== "ready"
+          ? createAdminClient()
+              .rpc("enqueue_outfit_preview_job", {
+                p_user_id: input.userId,
+                p_candidate_id: retrieved.candidateId,
+                p_priority_reason: "frequently_suggested",
+              })
+              .then(
+                () => undefined,
+                () => undefined,
+              )
+          : Promise.resolve(),
+      ]),
     );
 
     return {
@@ -330,6 +355,11 @@ async function tryServeRetrievedOutfit({
       outfit: validation.outfit,
       weather,
       excludedItemCount: 0,
+      preview: {
+        candidateId: retrieved.candidateId,
+        status: retrieved.previewStatus,
+        styleTags: retrieved.styleTags,
+      },
     };
   } catch {
     return null;

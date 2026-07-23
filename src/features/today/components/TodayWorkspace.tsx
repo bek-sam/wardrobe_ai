@@ -15,7 +15,7 @@ import {
 } from "@phosphor-icons/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -77,6 +77,12 @@ type OutfitSelection = {
   sort_order: number;
 };
 
+type TodayPreviewInfo = {
+  candidateId: string;
+  status: "none" | "queued" | "generating" | "ready" | "failed";
+  styleTags: string[];
+};
+
 export type TodayRecommendation = {
   generationId: string | null;
   title: string;
@@ -91,6 +97,7 @@ export type TodayRecommendation = {
   excludedItemCount: number;
   savedOutfitId: string | null;
   occasion: string | null;
+  preview: TodayPreviewInfo | null;
 };
 
 type NormalizedRecommendation = Omit<TodayRecommendation, "itemDetails" | "occasion">;
@@ -128,6 +135,8 @@ class TodayRequestError extends Error {
     this.name = "TodayRequestError";
   }
 }
+
+const previewStatuses = new Set(["none", "queued", "generating", "ready", "failed"]);
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -281,6 +290,17 @@ function savedOutfitId(value: unknown) {
   return null;
 }
 
+function normalizePreview(value: unknown): TodayPreviewInfo | null {
+  if (!isObject(value)) return null;
+  const candidateId = safeString(value.candidateId);
+  if (!uuidPattern.test(candidateId)) return null;
+  const status =
+    typeof value.status === "string" && previewStatuses.has(value.status)
+      ? (value.status as TodayPreviewInfo["status"])
+      : "none";
+  return { candidateId, status, styleTags: safeStrings(value.styleTags, 5) };
+}
+
 export function normalizeTodayRecommendation(value: unknown): NormalizedRecommendation | null {
   if (!isObject(value) || !isObject(value.outfit)) return null;
   const outfit = value.outfit;
@@ -335,6 +355,7 @@ export function normalizeTodayRecommendation(value: unknown): NormalizedRecommen
         ? Math.max(0, value.excludedItemCount)
         : 0,
     savedOutfitId: savedOutfitId(value.savedOutfit),
+    preview: normalizePreview(value.preview),
   };
 }
 
@@ -558,6 +579,56 @@ export function TodayWorkspace({ aiConfigured }: { aiConfigured: boolean }) {
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewRequestBusy, setPreviewRequestBusy] = useState(false);
+  const [previewNotice, setPreviewNotice] = useState<string | null>(null);
+
+  const previewCandidateId = recommendation?.preview?.candidateId ?? null;
+  const previewStatus = recommendation?.preview?.status ?? null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      setPreviewImageUrl(null);
+      setPreviewNotice(null);
+      if (!previewCandidateId || previewStatus !== "ready") return;
+      try {
+        const data = await requestJson<{ status: string; previewUrl: string | null }>(
+          `/api/outfit-candidates/${previewCandidateId}/preview`,
+          { signal: controller.signal },
+        );
+        setPreviewImageUrl(data.previewUrl);
+      } catch {
+        // A failed fetch just means no image renders.
+      }
+    })();
+    return () => controller.abort();
+  }, [previewCandidateId, previewStatus]);
+
+  const requestPreview = useCallback(async () => {
+    if (!previewCandidateId) return;
+    setPreviewRequestBusy(true);
+    setPreviewNotice(null);
+    try {
+      const result = await requestJson<{ status: string }>(
+        `/api/outfit-candidates/${previewCandidateId}/preview`,
+        { method: "POST" },
+      );
+      setPreviewNotice(
+        result.status === "already_fresh"
+          ? "A preview is already ready."
+          : "Preview requested — this can take a minute. Check back shortly.",
+      );
+    } catch (previewError) {
+      setPreviewNotice(
+        previewError instanceof Error
+          ? previewError.message
+          : "The preview could not be requested.",
+      );
+    } finally {
+      setPreviewRequestBusy(false);
+    }
+  }, [previewCandidateId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -947,6 +1018,42 @@ export function TodayWorkspace({ aiConfigured }: { aiConfigured: boolean }) {
             </p>
             <h2 id="today-look-title">{recommendation.title}</h2>
             <p className="today-look__summary">{recommendation.explanation}</p>
+            {recommendation.preview ? (
+              <div className="recommendation-preview">
+                {recommendation.preview.styleTags.length ? (
+                  <div className="recommendation-preview__tags">
+                    {recommendation.preview.styleTags.map((tag) => (
+                      <Badge key={tag} tone="outline">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                ) : null}
+                {previewImageUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    alt="Modeled preview of this outfit"
+                    className="recommendation-preview__image"
+                    src={previewImageUrl}
+                  />
+                ) : recommendation.preview.status === "queued" ||
+                  recommendation.preview.status === "generating" ? (
+                  <p className="recommendation-preview__status">Modeled preview is generating…</p>
+                ) : recommendation.preview.status === "failed" ? (
+                  <p className="recommendation-preview__status">The last preview attempt failed.</p>
+                ) : (
+                  <button
+                    className="recommendation-preview__request"
+                    disabled={previewRequestBusy}
+                    onClick={() => void requestPreview()}
+                    type="button"
+                  >
+                    {previewRequestBusy ? "Requesting…" : "Generate a modeled preview"}
+                  </button>
+                )}
+                {previewNotice ? <small>{previewNotice}</small> : null}
+              </div>
+            ) : null}
             <ul className="today-look__reasons" aria-label="Recommendation reasons and warnings">
               {recommendationReasons.slice(0, 3).map((reason) => (
                 <li key={reason}>

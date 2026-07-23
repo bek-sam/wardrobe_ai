@@ -61,6 +61,12 @@ type WeatherView = {
   constraints: string[];
 };
 
+type PreviewInfo = {
+  candidateId: string;
+  status: "none" | "queued" | "generating" | "ready" | "failed";
+  styleTags: string[];
+};
+
 type Recommendation = {
   conversationId: string;
   generationId: string | null;
@@ -74,6 +80,7 @@ type Recommendation = {
   followUpQuestion: string | null;
   weather: WeatherView | null;
   excludedItemCount: number;
+  preview: PreviewInfo | null;
 };
 
 type ChatMessage = {
@@ -297,6 +304,19 @@ function normalizeWeather(value: unknown): WeatherView | null {
   };
 }
 
+const previewStatuses = new Set(["none", "queued", "generating", "ready", "failed"]);
+
+function normalizePreview(value: unknown): PreviewInfo | null {
+  if (!isObject(value)) return null;
+  const candidateId = safeString(value.candidateId);
+  if (!uuidPattern.test(candidateId)) return null;
+  const status =
+    typeof value.status === "string" && previewStatuses.has(value.status)
+      ? (value.status as PreviewInfo["status"])
+      : "none";
+  return { candidateId, status, styleTags: safeStrings(value.styleTags, 5) };
+}
+
 function normalizeRecommendation(value: unknown): Omit<Recommendation, "itemDetails"> | null {
   if (!isObject(value) || !isObject(value.outfit)) return null;
   const conversationId = safeString(value.conversationId);
@@ -340,6 +360,7 @@ function normalizeRecommendation(value: unknown): Omit<Recommendation, "itemDeta
       typeof value.excludedItemCount === "number" && Number.isInteger(value.excludedItemCount)
         ? Math.max(0, value.excludedItemCount)
         : 0,
+    preview: normalizePreview(value.preview),
   };
 }
 
@@ -457,6 +478,57 @@ export function StylistWorkspace({
   const [historyTranscriptLoading, setHistoryTranscriptLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+  const [previewRequestBusy, setPreviewRequestBusy] = useState(false);
+  const [previewNotice, setPreviewNotice] = useState<string | null>(null);
+
+  const previewCandidateId = recommendation?.preview?.candidateId ?? null;
+  const previewStatus = recommendation?.preview?.status ?? null;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      setPreviewImageUrl(null);
+      setPreviewNotice(null);
+      if (!previewCandidateId || previewStatus !== "ready") return;
+      try {
+        const data = await requestJson<{ status: string; previewUrl: string | null }>(
+          `/api/outfit-candidates/${previewCandidateId}/preview`,
+          { signal: controller.signal },
+        );
+        setPreviewImageUrl(data.previewUrl);
+      } catch {
+        // A failed fetch just means no image renders; the rest of the
+        // recommendation is unaffected.
+      }
+    })();
+    return () => controller.abort();
+  }, [previewCandidateId, previewStatus]);
+
+  const requestPreview = useCallback(async () => {
+    if (!previewCandidateId) return;
+    setPreviewRequestBusy(true);
+    setPreviewNotice(null);
+    try {
+      const result = await requestJson<{ status: string }>(
+        `/api/outfit-candidates/${previewCandidateId}/preview`,
+        { method: "POST" },
+      );
+      setPreviewNotice(
+        result.status === "already_fresh"
+          ? "A preview is already ready."
+          : "Preview requested — this can take a minute. Check back shortly.",
+      );
+    } catch (previewError) {
+      setPreviewNotice(
+        previewError instanceof Error
+          ? previewError.message
+          : "The preview could not be requested.",
+      );
+    } finally {
+      setPreviewRequestBusy(false);
+    }
+  }, [previewCandidateId]);
 
   const loadConversationList = useCallback(async () => {
     if (!supabaseConfigured) return;
@@ -1137,6 +1209,46 @@ export function StylistWorkspace({
                   {Math.round(recommendation.confidence * 100)}% fit
                 </Badge>
               </div>
+              {recommendation.preview ? (
+                <div className="recommendation-preview">
+                  {recommendation.preview.styleTags.length ? (
+                    <div className="recommendation-preview__tags">
+                      {recommendation.preview.styleTags.map((tag) => (
+                        <Badge key={tag} tone="outline">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                  {previewImageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      alt="Modeled preview of this outfit"
+                      className="recommendation-preview__image"
+                      src={previewImageUrl}
+                    />
+                  ) : recommendation.preview.status === "queued" ||
+                    recommendation.preview.status === "generating" ? (
+                    <p className="recommendation-preview__status">
+                      <SpinnerGap className="spin" size={14} /> Modeled preview is generating…
+                    </p>
+                  ) : recommendation.preview.status === "failed" ? (
+                    <p className="recommendation-preview__status">
+                      <WarningCircle size={14} /> The last preview attempt failed.
+                    </p>
+                  ) : (
+                    <button
+                      className="recommendation-preview__request"
+                      disabled={previewRequestBusy}
+                      onClick={() => void requestPreview()}
+                      type="button"
+                    >
+                      {previewRequestBusy ? "Requesting…" : "Generate a modeled preview"}
+                    </button>
+                  )}
+                  {previewNotice ? <small>{previewNotice}</small> : null}
+                </div>
+              ) : null}
               <div className="recommendation-panel__canvas">
                 {recommendation.items.map((selection) => {
                   const detail = recommendation.itemDetails.get(selection.item_id);

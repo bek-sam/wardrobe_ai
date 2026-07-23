@@ -30,6 +30,7 @@ const pagination = {
 export const itemParamsSchema = z.object({ itemId: z.string().uuid() }).strict();
 export const outfitParamsSchema = z.object({ outfitId: z.string().uuid() }).strict();
 export const planParamsSchema = z.object({ planId: z.string().uuid() }).strict();
+export const outfitCandidateParamsSchema = z.object({ candidateId: z.string().uuid() }).strict();
 
 export const profileUpdateSchema = z
   .object({
@@ -43,6 +44,8 @@ export const profileUpdateSchema = z
     temperature_unit: z.enum(["celsius", "fahrenheit"]).optional(),
     locale: text(35).optional(),
     onboarding_completed_at: timestamp.nullable().optional(),
+    modeled_preview_consent: z.boolean().optional(),
+    identity_reference_path: nullableText(500).optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, "At least one profile field is required.");

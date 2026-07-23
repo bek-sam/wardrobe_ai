@@ -74,20 +74,29 @@ export async function extractGarment(input: ExtractGarmentInput): Promise<Extrac
 export type ModeledPreviewInput = {
   userId: string;
   identityReference: Buffer;
-  garmentCutout: Buffer;
+  // 1-6 garment cutouts, one per outfit-defining role. There are no existing
+  // callers of this function today, so the signature is widened directly
+  // from a single garmentCutout rather than adding a parallel function --
+  // client.images.edit()'s image param already accepts an array, as
+  // extractGarment's sibling call above proves.
+  garmentCutouts: Buffer[];
   prompt: string;
 };
 
 export async function generateModeledPreview(input: ModeledPreviewInput): Promise<Buffer> {
   const environment = requireEnvironment("OPENAI_IMAGE_MODEL");
   const client = getOpenAIClient();
-  const [identityFile, garmentFile] = await Promise.all([
-    toFile(input.identityReference, "private-identity-reference.png", { type: "image/png" }),
-    toFile(input.garmentCutout, "wardrobe-garment.png", { type: "image/png" }),
-  ]);
+  const identityFile = await toFile(input.identityReference, "private-identity-reference.png", {
+    type: "image/png",
+  });
+  const garmentFiles = await Promise.all(
+    input.garmentCutouts.map((cutout, index) =>
+      toFile(cutout, `wardrobe-garment-${index}.png`, { type: "image/png" }),
+    ),
+  );
   const response = await client.images.edit({
     model: environment.OPENAI_IMAGE_MODEL,
-    image: [identityFile, garmentFile],
+    image: [identityFile, ...garmentFiles],
     prompt: input.prompt,
     size: "1536x1024",
     quality: environment.OPENAI_IMAGE_QUALITY,

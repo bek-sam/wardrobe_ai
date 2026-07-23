@@ -14,7 +14,7 @@ import {
   WarningCircle,
 } from "@phosphor-icons/react";
 import Link from "next/link";
-import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/Card";
 import { DemoNotice } from "@/components/ui/DemoNotice";
 import { SelectField, TextareaField, TextField } from "@/components/ui/FormField";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { createClient } from "@/lib/supabase/client";
 
 type ApiEnvelope<T> = { data: T } | { error: { message?: string } };
 
@@ -33,6 +34,17 @@ type Profile = {
   timezone: string;
   temperature_unit: "celsius" | "fahrenheit";
   locale: string;
+  modeled_preview_consent: boolean;
+  identity_reference_path: string | null;
+};
+
+type SignedUpload = {
+  bucket: string;
+  path: string;
+  signedUrl: string;
+  token: string;
+  requiredContentType: string;
+  maximumFileSize: number;
 };
 
 type StyleProfile = {
@@ -154,6 +166,10 @@ export function SettingsManager({ configured }: { configured: boolean }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePhrase, setDeletePhrase] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
+  const [modeledPreviewConsent, setModeledPreviewConsent] = useState(false);
+  const [identityReferencePath, setIdentityReferencePath] = useState<string | null>(null);
+  const [previewConsentBusy, setPreviewConsentBusy] = useState(false);
+  const identityFileInput = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!configured) return;
@@ -173,6 +189,8 @@ export function SettingsManager({ configured }: { configured: boolean }) {
           setHomeLocation(nextProfile.home_location_name ?? "");
           setTimezone(nextProfile.timezone || "America/Chicago");
           setTemperatureUnit(nextProfile.temperature_unit || "fahrenheit");
+          setModeledPreviewConsent(nextProfile.modeled_preview_consent ?? false);
+          setIdentityReferencePath(nextProfile.identity_reference_path ?? null);
           setStyles(nextStyle?.style_keywords ?? []);
           setActivities(nextStyle?.common_activities ?? []);
           setFavoriteColors((nextStyle?.favorite_colors ?? []).join(", "));
@@ -235,6 +253,77 @@ export function SettingsManager({ configured }: { configured: boolean }) {
         ? selected.filter((candidate) => candidate !== value)
         : [...selected, value],
     );
+  }
+
+  async function uploadIdentityReference(file: File) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      setNotice({ tone: "error", message: "Choose a JPG, PNG, or WebP image." });
+      return;
+    }
+    if (!file.size || file.size > 20 * 1024 * 1024) {
+      setNotice({ tone: "error", message: "Choose an image smaller than 20 MB." });
+      return;
+    }
+    setPreviewConsentBusy(true);
+    setNotice(null);
+    try {
+      const signed = await requestJson<SignedUpload>("/api/uploads/sign", {
+        method: "POST",
+        body: JSON.stringify({
+          purpose: "profile-reference",
+          fileName: file.name || "identity-reference.jpg",
+          contentType: file.type,
+          fileSize: file.size,
+        }),
+      });
+      if (file.size > signed.maximumFileSize || signed.requiredContentType !== file.type) {
+        throw new Error("The selected file does not match the signed upload requirements.");
+      }
+      const supabase = createClient();
+      const { error: uploadError } = await supabase.storage
+        .from(signed.bucket)
+        .uploadToSignedUrl(signed.path, signed.token, file, {
+          contentType: signed.requiredContentType,
+        });
+      if (uploadError) throw new Error("The private image upload failed. Please try again.");
+
+      const result = await requestJson<Profile>("/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ identity_reference_path: signed.path }),
+      });
+      setIdentityReferencePath(result.identity_reference_path ?? signed.path);
+      setProfile((current) => (current ? { ...current, ...result } : current));
+      setNotice({ tone: "success", message: "Identity reference photo saved." });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: error instanceof Error ? error.message : "The reference photo could not be saved.",
+      });
+    } finally {
+      setPreviewConsentBusy(false);
+    }
+  }
+
+  async function toggleModeledPreviewConsent() {
+    const next = !modeledPreviewConsent;
+    setPreviewConsentBusy(true);
+    setNotice(null);
+    try {
+      const result = await requestJson<Profile>("/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ modeled_preview_consent: next }),
+      });
+      setModeledPreviewConsent(result.modeled_preview_consent ?? next);
+      setProfile((current) => (current ? { ...current, ...result } : current));
+      setNotice({ tone: "success", message: "Your settings were saved." });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: error instanceof Error ? error.message : "Your settings could not be saved.",
+      });
+    } finally {
+      setPreviewConsentBusy(false);
+    }
   }
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
@@ -703,17 +792,13 @@ export function SettingsManager({ configured }: { configured: boolean }) {
                 <h2>Your controls</h2>
                 <p>Sensitive or expensive capabilities are always opt-in.</p>
               </div>
-              <Badge tone="outline">Not stored yet</Badge>
+              <Badge tone="outline">Partially stored</Badge>
             </div>
             <div className="toggle-list">
               {[
                 [
                   "Allow product research",
                   "Research runs only when requested and always shows sources.",
-                ],
-                [
-                  "Modeled preview consent",
-                  "Private modeled previews require a future consent-backed setting.",
                 ],
                 [
                   "Preference learning",
@@ -728,6 +813,55 @@ export function SettingsManager({ configured }: { configured: boolean }) {
                   <input disabled role="switch" type="checkbox" />
                 </label>
               ))}
+              <div className="toggle-row toggle-row--modeled-preview">
+                <span>
+                  <strong>Modeled preview consent</strong>
+                  <small>
+                    {identityReferencePath
+                      ? "Private modeled previews use your uploaded reference photo. Generated images are clearly labeled and never an accurate fit simulation."
+                      : "Upload a private reference photo to enable modeled previews of curated outfits."}
+                  </small>
+                </span>
+                <input
+                  checked={modeledPreviewConsent}
+                  disabled={disabled || previewConsentBusy || !identityReferencePath}
+                  onChange={toggleModeledPreviewConsent}
+                  role="switch"
+                  type="checkbox"
+                />
+              </div>
+              <div className="toggle-row toggle-row--identity-upload">
+                <span>
+                  <strong>Identity reference photo</strong>
+                  <small>
+                    {identityReferencePath
+                      ? "A private reference photo is on file. Upload a new one to replace it."
+                      : "Required before modeled preview consent can be enabled."}
+                  </small>
+                </span>
+                <Button
+                  disabled={disabled || previewConsentBusy}
+                  onClick={() => identityFileInput.current?.click()}
+                  type="button"
+                >
+                  {previewConsentBusy
+                    ? "Uploading…"
+                    : identityReferencePath
+                      ? "Replace photo"
+                      : "Upload photo"}
+                </Button>
+                <input
+                  accept="image/jpeg,image/png,image/webp"
+                  className="sr-only"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void uploadIdentityReference(file);
+                  }}
+                  ref={identityFileInput}
+                  type="file"
+                />
+              </div>
             </div>
             <div className="settings-form-actions">
               <Link href="/privacy">Read the privacy policy</Link>

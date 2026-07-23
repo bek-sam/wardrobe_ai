@@ -34,12 +34,16 @@ export interface RetrievedOutfitCandidateItem {
 
 export type RetrievedOutfitSelectionReason = "safest" | "underused" | "expressive";
 
+export type OutfitPreviewStatus = "none" | "queued" | "generating" | "ready" | "failed";
+
 export interface RetrievedOutfitCandidate {
   candidateId: string;
   score: number;
   selectionReason: RetrievedOutfitSelectionReason;
   items: RetrievedOutfitCandidateItem[];
   resolvedItems: WardrobeItem[];
+  styleTags: string[];
+  previewStatus: OutfitPreviewStatus;
 }
 
 // Below this, an LLM-composed outfit is more likely to serve the user well
@@ -66,6 +70,11 @@ interface EvaluatedCandidate {
   items: RetrievedOutfitCandidateItem[];
   resolvedItems: WardrobeItem[];
   combinationKey: string;
+  curatorPreferred: boolean;
+  styleTags: string[];
+  previewBucket: string | null;
+  previewStoragePath: string | null;
+  previewStatus: OutfitPreviewStatus;
 }
 
 /**
@@ -91,10 +100,13 @@ export async function retrieveStoredOutfitCandidates(
   let query = admin
     .from("outfit_candidates")
     .select(
-      "id, times_suggested, last_suggested_at, preference_match, outfit_candidate_items(item_id, role, sort_order)",
+      "id, times_suggested, last_suggested_at, preference_match, curator_status, style_tags, preview_status, preview_bucket, preview_storage_path, outfit_candidate_items(item_id, role, sort_order)",
     )
     .eq("user_id", input.userId)
     .eq("status", "active")
+    // Curator-rejected candidates stay in storage as an audit trail only --
+    // never eligible for retrieval.
+    .neq("curator_status", "rejected")
     .eq("compiled_wardrobe_version", state.compiled_wardrobe_version)
     .order("total_score", { ascending: false })
     .limit(RETRIEVAL_POOL_LIMIT);
@@ -185,28 +197,31 @@ export async function retrieveStoredOutfitCandidates(
       items: memberRows,
       resolvedItems,
       combinationKey: outfitCombinationKey(memberRows.map((member) => member.item_id)),
+      curatorPreferred: row.curator_status === "selected",
+      styleTags: (row.style_tags as string[] | null) ?? [],
+      previewBucket: (row.preview_bucket as string | null) ?? null,
+      previewStoragePath: (row.preview_storage_path as string | null) ?? null,
+      previewStatus: (row.preview_status as OutfitPreviewStatus | null) ?? "none",
     });
   }
 
   const qualifying = evaluated
     .filter((candidate) => candidate.score >= RETRIEVAL_MIN_SCORE)
-    .sort((first, second) => second.score - first.score);
+    .sort(
+      (first, second) =>
+        (second.curatorPreferred ? 1 : 0) - (first.curatorPreferred ? 1 : 0) ||
+        second.score - first.score,
+    );
   if (qualifying.length === 0) return [];
 
-  const results: RetrievedOutfitCandidate[] = [];
+  const results: (EvaluatedCandidate & { selectionReason: RetrievedOutfitSelectionReason })[] = [];
   const usedCombinationKeys = new Set<string>();
 
   function take(candidate: EvaluatedCandidate | undefined, reason: RetrievedOutfitSelectionReason) {
     if (!candidate) return false;
     if (usedCombinationKeys.has(candidate.combinationKey)) return false;
     usedCombinationKeys.add(candidate.combinationKey);
-    results.push({
-      candidateId: candidate.candidateId,
-      score: candidate.score,
-      selectionReason: reason,
-      items: candidate.items,
-      resolvedItems: candidate.resolvedItems,
-    });
+    results.push({ ...candidate, selectionReason: reason });
     return true;
   }
 
@@ -235,7 +250,22 @@ export async function retrieveStoredOutfitCandidates(
     }
   }
 
-  return results.slice(0, MAX_RESULTS);
+  // Deliberately never signs a URL here: a signed URL is short-lived and this
+  // result can end up persisted (stylist chat history), so callers that need
+  // to display the image fetch a fresh signed URL on demand from
+  // GET /api/outfit-candidates/[candidateId]/preview instead. "No preview
+  // yet" is represented purely as previewStatus !== 'ready' -- never a
+  // synchronous wait; this function makes zero curator or image-generation
+  // calls, only reads already-persisted columns.
+  return results.slice(0, MAX_RESULTS).map((candidate) => ({
+    candidateId: candidate.candidateId,
+    score: candidate.score,
+    selectionReason: candidate.selectionReason,
+    items: candidate.items,
+    resolvedItems: candidate.resolvedItems,
+    styleTags: candidate.styleTags,
+    previewStatus: candidate.previewStatus,
+  }));
 }
 
 export async function markOutfitCandidateSuggested(userId: string, candidateId: string) {

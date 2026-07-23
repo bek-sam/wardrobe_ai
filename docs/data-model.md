@@ -12,6 +12,7 @@ The Supabase schema treats `profiles` as the ownership root for private applicat
 6. `202607210006_wardrobe_compilation.sql` creates the precomputed outfit-candidate library (`outfit_candidates`, `outfit_candidate_items`, `wardrobe_compilation_state`/`jobs`).
 7. `202607210007_account_deletion_workflow.sql` adds the durable, resumable account-deletion request table and RPCs.
 8. `202607210008_wardrobe_compilation_v2.sql` adds normalized `occasion_category`, atomic finalize/exposure/fallback RPCs, the manual-recompile RPC, and the service-role batch-claim RPC for a real background worker.
+9. `202607220001_curator_and_previews.sql` adds the wardrobe-change-event log, the curator analysis cache, the modeled-preview job queue, curator/preview state columns on `outfit_candidates`, modeled-preview consent columns on `profiles`, and a style-archetype column on `style_profiles`.
 
 Migrations are additive and use `if not exists`, replaceable functions, stable trigger names, and replaceable policies where practical. Every private table enables RLS in the migration that creates it; owner policies arrive in migration 003, so a partially applied schema remains deny-by-default. Apply the files with the Supabase CLI rather than pasting them out of order.
 
@@ -31,6 +32,10 @@ auth.users
     │   └── import_job_candidates ── optional saved wardrobe_item
     ├── outfit_plans ── optional outfit
     ├── outfit_feedback ── outfit
+    ├── outfit_candidates
+    │   ├── outfit_candidate_items
+    │   └── outfit_preview_jobs ── composite FK (candidate_id, user_id)
+    ├── outfit_analysis_cache
     ├── conversations
     │   └── messages
     ├── agent_runs
@@ -39,6 +44,10 @@ auth.users
     ├── feature_usage_counters
     └── rate_limit_events
 
+wardrobe_change_events ── user_id FK'd to profiles, but item_id deliberately
+                           not FK'd to wardrobe_items (mirrors
+                           storage_deletion_queue: a 'deleted' event must
+                           survive the item's hard delete)
 storage_deletion_queue ── retained user UUID, no profile FK
 feature_limits ── global database-owned quota configuration, no client access
 ```
@@ -143,6 +152,16 @@ Both RPCs lock relevant rows, hash and scope client idempotency keys to the item
 
 `outfit_candidates` (versioned by `compiled_wardrobe_version`, one active version served at a time) and `outfit_candidate_items` store the generated combinations; `occasion_category` is a normalized category (see `resolveOccasionContext` in `src/lib/recommendation`) distinct from the free-text `occasion_tags`, and `weather_tags` records which temperature bands/rain-safety the outfit's own garments cover. `generated_by` is `compilation` for the precompiled library or `fallback_llm` for outfits the stylist had to compose live; `record_fallback_outfit_candidate(...)` and `increment_outfit_candidate_exposure(...)` are the only mutation paths, both atomic RPCs (never a read-modify-write or a multi-call insert that could leave a candidate with zero items).
 
+### Outfit curator and modeled previews
+
+`wardrobe_change_events` is an append-only log populated by three triggers (on `wardrobe_items`, `wardrobe_item_images`, and `style_profiles`) that record `created`/`metadata_changed`/`cutout_changed`/`availability_changed`/`deleted`/`preference_changed` rows with a point-in-time `item_version` marker. `compileWardrobeForUser` reads every unprocessed row for a user at the start of a compile to determine which items actually changed, marks them `processed_at` only after the compile finalizes successfully (so a crash mid-run naturally re-derives the same affected set next time), and uses that set to build a bounded curator shortlist instead of treating every compile as "everything changed."
+
+The curator agent (`src/lib/ai/agents/outfit-curator-agent.ts`) reviews at most `WARDROBE_CURATOR_MAX_CANDIDATES` (default 40) candidates per call and runs at most `WARDROBE_CURATOR_MAX_CALLS_PER_COMPILATION` (default 2) times per compile, regardless of batch size: a "new/changed" shortlist (candidates touching this run's changed items) and, if budget remains, a "catch-up" shortlist of the oldest still-`curator_status='not_reviewed'` candidates. Each candidate is checked against `outfit_analysis_cache` (keyed by `(user_id, analysis_hash)`, where `analysis_hash` is a sha256 of sorted item IDs + each item's `updated_at` + the user's preference version + the style-knowledge package version + the curator model + prompt version) before spending a model call. `outfit_candidates.curator_status` is `not_reviewed | selected | rejected`; rejected candidates are never deleted (they remain a fallback/audit trail) but are excluded from stylist retrieval. A missing `OPENAI_CURATOR_MODEL`, a model error, or an exhausted `outfit_curator_calls` daily quota all leave affected rows `not_reviewed` without failing the compile — the deterministic `generated_by='compilation'` library is always the fully usable fallback, and the next compile's catch-up shortlist retries automatically.
+
+Because `writeCandidates()` upserts on `(user_id, combination_key)` instead of always inserting, an unaffected candidate's curator verdict and cached preview survive an unrelated recompile untouched.
+
+The modeled-preview pipeline is a separate claim-queue, `outfit_preview_jobs`, mirroring `wardrobe_compilation_jobs`'s claim/lease/backoff shape (`claim_outfit_preview_jobs`, `finalize_outfit_preview_job`, `fail_outfit_preview_job`). `enqueue_outfit_preview_job(...)` computes its own freshness hash from the candidate's current items + latest cutout timestamps, dedupes via a partial unique index (`outfit_preview_jobs_candidate_active_unique`), and soft-caps per-user queued jobs (returns `null` rather than erroring). It is called from four priority paths — new items just compiled, a saved outfit, tomorrow's planned outfit, and a frequently-suggested-but-preview-less candidate — plus the client-facing `request_outfit_preview(p_candidate_id)` wrapper, which additionally enforces `profiles.modeled_preview_consent` and a rate limit. `profiles.modeled_preview_consent` has a database-level co-constraint requiring `identity_reference_path` to already be set, so consent can never be enabled without a private reference photo on file. The preview worker (`src/jobs/generate-outfit-previews.ts`) never runs on the request path; it downloads the identity reference and each member item's cutout, calls the (already-existing) `generateModeledPreview()` image helper, and stores the result under `wardrobe-generated/{userId}/{candidateId}/...`, denormalizing `preview_status`/`preview_bucket`/`preview_storage_path` back onto the `outfit_candidates` row for the retriever to read with zero extra joins.
+
 ### Chat and observability
 
 `messages` contains only user-visible content and structured UI results. Never store hidden chain-of-thought. `agent_runs` contains safe summaries, tool names/results summaries, model name, latency, usage, and error code; it must not contain API keys, original private images, or raw sensitive prompts. Authenticated users may read only their own agent runs; inserts and all later mutations are server/service-role operations so usage and audit records remain trustworthy.
@@ -157,13 +176,13 @@ Both RPCs lock relevant rows, hash and scope client idempotency keys to the item
 
 `rate_limit_events` implements a rolling per-user feature bucket. Call `consume_rate_limit(bucket, limit, window, cost)` before expensive AI operations. An advisory transaction lock prevents concurrent requests from overspending a bucket.
 
-`feature_usage_counters` enforces longer daily or monthly feature budgets on fixed UTC boundaries, so changing a style/weather timezone cannot mint another quota. `check_and_increment_usage(feature, limit)` atomically consumes one daily unit; `check_and_increment_usage_window(feature, limit, period, increment)` supports `day` and `month` counters. Import and research callers cannot choose their own limits: `feature_limits` owns the `image_import` and `item_research` daily budgets and is inaccessible to authenticated clients.
+`feature_usage_counters` enforces longer daily or monthly feature budgets on fixed UTC boundaries, so changing a style/weather timezone cannot mint another quota. `check_and_increment_usage(feature, limit)` atomically consumes one daily unit; `check_and_increment_usage_window(feature, limit, period, increment)` supports `day` and `month` counters. Import and research callers cannot choose their own limits: `feature_limits` owns the `image_import`, `item_research`, `outfit_curator_calls`, and `outfit_preview_generation` daily budgets and is inaccessible to authenticated clients. `service_check_and_increment_usage_window(...)` is the service-role-callable twin used by the compilation and preview workers, which run with no `auth.uid()` session.
 
 When an enqueue budget is exhausted, PostgREST returns HTTP 429 with SQLSTATE/code `PT429`, message `daily_import_limit_reached` or `daily_research_limit_reached`, and a JSON-string `details` value containing `limit`, `used`, `remaining`, and `reset_at`. Because the counter and queue insert are in one transaction, a failed insert does not spend quota and concurrent requests cannot exceed it.
 
 Other enqueue errors are stable machine-readable messages: `idempotency_key_payload_mismatch` (`PT409`), `import_image_not_found` or `wardrobe_item_not_found` (`PT404`), and `insufficient_research_clues` (`PT422`). Invalid argument shapes use SQLSTATE `22023`; missing server configuration uses `55000`; unauthenticated invocation uses `42501`.
 
-Schedule `prune_wardrobe_operational_data()` with a trusted service role to remove expired idempotency rows and rate events older than 32 days.
+Schedule `prune_wardrobe_operational_data()` with a trusted service role to remove expired idempotency rows and rate events older than 32 days; it also enqueues storage cleanup for previews on candidates about to be archived-pruned, and purges expired `outfit_analysis_cache` rows, old processed `wardrobe_change_events`, and old terminal `outfit_preview_jobs`.
 
 Hard-deleting image, import-job, or import-candidate rows enqueues unreferenced object paths in `storage_deletion_queue`; replacing an image row's path performs the same old-path reference check. Candidate assets promoted to `wardrobe_item_images` are retained. A service-role worker leases tasks with `claim_storage_deletion_tasks(limit, lease_seconds)`, removes each object through the Storage API, and marks the queue row complete. Soft-deleting a wardrobe item intentionally retains its images until the product's retention behavior requests hard deletion.
 
