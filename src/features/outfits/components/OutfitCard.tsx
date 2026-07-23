@@ -1,26 +1,11 @@
 import { ArrowRight, Heart } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
 import type { ReactNode } from "react";
+
 import { Badge } from "@/components/ui/Badge";
-import {
-  GarmentArtwork,
-  type GarmentCategory,
-} from "@/features/wardrobe/components/GarmentArtwork";
+import { GarmentArtwork } from "@/features/wardrobe/components/GarmentArtwork";
 
-interface OutfitPiece {
-  category: GarmentCategory;
-  color: string;
-  accent?: string;
-}
-
-export interface OutfitPreview {
-  id: string;
-  name: string;
-  occasion: string;
-  detail: string;
-  pieces: OutfitPiece[];
-  favorite?: boolean;
-}
+import type { OutfitPreview } from "./outfit-card.types";
 
 export function OutfitCard({
   outfit,
