@@ -3,20 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getServerEnvironment } from "@/lib/env/server";
 import { createPrivateSignedUrl } from "@/lib/storage/private-images";
 
-type ImageRow = {
-  id: string;
-  kind: string;
-  bucket_id: string;
-  storage_path: string;
-  mime_type: string;
-  width: number;
-  height: number;
-  file_size: number;
-  is_primary: boolean;
-  generation_model?: string | null;
-  parent_image_id?: string | null;
-  created_at?: string;
-};
+import type { ImageRow } from "./item-view.types";
 
 export async function withSignedWardrobeImages<T extends { wardrobe_item_images?: ImageRow[] }>(
   client: SupabaseClient,

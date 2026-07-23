@@ -1,5 +1,5 @@
 import type { OutfitPreview } from "@/features/outfits/components/OutfitCard";
-import type { WardrobePreviewItem } from "@/features/wardrobe/components/WardrobeItemCard";
+import type { WardrobePreviewItem } from "@/features/wardrobe/components/wardrobe-item-card.types";
 
 export const previewItems: WardrobePreviewItem[] = [
   {

@@ -24,7 +24,7 @@ import {
   GarmentArtwork,
   type GarmentCategory,
 } from "@/features/wardrobe/components/GarmentArtwork";
-import type { WardrobePreviewItem } from "@/features/wardrobe/components/WardrobeItemCard";
+import type { WardrobePreviewItem } from "@/features/wardrobe/components/wardrobe-item-card.types";
 
 type ApiEnvelope<T> = { data: T } | { error: { message?: string } };
 type Count = { name: string; count: number };

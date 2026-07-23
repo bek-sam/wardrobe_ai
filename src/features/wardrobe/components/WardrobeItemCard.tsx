@@ -1,19 +1,10 @@
 import { Heart, WarningCircle } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
-import { Badge } from "@/components/ui/Badge";
-import { GarmentArtwork, type GarmentCategory } from "./GarmentArtwork";
 
-export interface WardrobePreviewItem {
-  id: string;
-  name: string;
-  category: GarmentCategory;
-  categoryLabel: string;
-  color: string;
-  accent?: string;
-  meta: string;
-  status?: "available" | "laundry";
-  favorite?: boolean;
-}
+import { Badge } from "@/components/ui/Badge";
+
+import { GarmentArtwork } from "./GarmentArtwork";
+import type { WardrobePreviewItem } from "./wardrobe-item-card.types";
 
 export function WardrobeItemCard({
   item,
