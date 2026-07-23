@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeTodayRecommendation } from "@/features/today/components/TodayWorkspace";
+import { normalizeTodayRecommendation } from "@/features/today/components/normalize-today-recommendation";
 
 import { ITEM_IDS } from "./fixtures";
 
