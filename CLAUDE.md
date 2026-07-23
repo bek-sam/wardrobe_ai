@@ -86,6 +86,18 @@ Route allocates `import_jobs` row + signed upload path → browser uploads direc
 
 Resolve user/preferences/date/location/candidates → forecast → deterministic constraints → filter out archived/deleted/unavailable/laundry/weather-incompatible items → score remaining candidates with centrally configured weights → stylist gets compact exact-ID candidate set → validate result against ownership/availability/role/foundation rules → optionally persist via transactional RPC (`save_generated_outfit`, `save_generated_plan`, `save_generated_week`, etc.).
 
+## Code style
+
+**Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, and pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data) since splitting those for line count alone hurts readability for no benefit.
+
+Folder conventions when a file grows past the limit:
+
+- **`lib/*` domain modules**: split into small single-purpose files re-exported through one `index.ts` barrel — see `src/lib/recommendation/`, `src/lib/weather/`, `src/lib/style-knowledge/` for the pattern (`scoring.ts`, `weights.ts`, `layering.ts`, etc., all re-exported).
+- **`features/*/components/`**: split into flat sibling files in the same directory, not a per-component subfolder — see `src/features/wardrobe/components/` (`WardrobeManager.tsx` alongside `CompilationStatus.tsx`, `GarmentArtwork.tsx`, `WardrobeItemCard.tsx`).
+- **`jobs/*` and other single-entry-point modules**: use a folder + `index.ts` (e.g. `src/jobs/compile-wardrobe/index.ts` + siblings) so the public import path (`@/jobs/compile-wardrobe`) is unchanged and there's no filename/directory collision.
+- **API routes**: co-locate `schema.ts` (if the route had an inline Zod schema) and `handler.ts` (the actual business logic) next to `route.ts`, leaving `route.ts` itself as a thin wrapper that resolves the viewer, calls the handler, and returns `routeError`/`NextResponse`.
+- Prefer extending an existing shared module over re-declaring a helper in a new file — e.g. `src/lib/api/request.ts` (`requestJson`, `errorMessage`) and `src/lib/api/normalize.ts` (`isObject`, `safeString`, `safeNumber`, `safeColor`) are the canonical homes for fetch/normalization helpers that used to be copy-pasted per component; `src/lib/recommendation/item-role.ts` is the canonical home for role/category presentation logic.
+
 ## Data model essentials (see `docs/data-model.md` for full detail)
 
 - `profiles.id` is exactly the Supabase Auth user ID; deleting the Auth user cascades through virtually everything except `storage_deletion_queue`, which intentionally retains the former user UUID until a worker removes the underlying bytes.

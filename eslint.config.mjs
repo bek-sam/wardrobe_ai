@@ -16,4 +16,19 @@ export default defineConfig([
     "scripts/**/*.mjs",
     "vite.config.mjs",
   ]),
+  {
+    files: ["src/**/*.ts", "src/**/*.tsx"],
+    ignores: [
+      "src/**/schema.ts",
+      "src/**/schemas.ts",
+      "src/**/schemas/**",
+      "src/**/types.ts",
+      "src/**/*.d.ts",
+      "src/**/constants.ts",
+      "src/**/*-data.ts",
+    ],
+    rules: {
+      "max-lines": ["error", { max: 50, skipBlankLines: true, skipComments: true }],
+    },
+  },
 ]);
