@@ -20,6 +20,12 @@ afterAll(async () => {
   await Promise.all(createdUserIds.map((id) => deleteTestUser(admin, id)));
 });
 
+// Deliberately the same key across versions in most tests below (never
+// version-qualified) -- outfit_candidates is unique on (user_id,
+// compiled_wardrobe_version, combination_key), so the same combination_key
+// reappearing under a new version must insert a new row, not collide with
+// the prior version's row.
+//
 // Inserting a wardrobe item already auto-creates a queued job via the
 // mark_wardrobe_compilation_dirty trigger (the partial unique index allows
 // only one queued/running job per user), so this reuses that row rather than
@@ -69,7 +75,7 @@ async function writeOneCandidate(
     .from("outfit_candidates")
     .insert({
       user_id: userId,
-      combination_key: `${version}:${topId}:${bottomId}`,
+      combination_key: `${topId}:${bottomId}`,
       compiled_wardrobe_version: version,
       job_id: jobId,
       status: "active",

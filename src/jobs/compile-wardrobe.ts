@@ -176,22 +176,92 @@ async function loadChangeEvents(admin: AdminClient, userId: string): Promise<Cha
   };
 }
 
-// Versioned publish: upserts the new version's rows (never a delete-then-
-// insert). Because the row objects below deliberately omit curator_*,
-// preview_*, style_tags, times_suggested, and last_suggested_at, an
-// unaffected candidate keeps its curator verdict and cached preview across a
-// recompile "for free" -- this is what makes previews/curator analysis
-// survive an unrelated wardrobe edit. finalize_wardrobe_compilation() is the
-// only thing that flips the published-version pointer, after verifying this
-// count, so a crash mid-write here just leaves inert unpublished rows.
+// Fields carried forward from an unaffected candidate's row in the
+// previously published version, so previews/curator analysis survive an
+// unrelated wardrobe edit instead of resetting to not_reviewed/none every
+// compile.
+const REUSABLE_CANDIDATE_COLUMNS =
+  "combination_key, curator_status, curator_rejection_reason, curator_confidence, curator_rank, " +
+  "curator_model, curator_prompt_version, curator_reviewed_at, style_tags, preview_status, " +
+  "preview_bucket, preview_storage_path, preview_source_hash, preview_model, preview_generated_at, " +
+  "preview_error_code, times_suggested, last_suggested_at";
+
+interface ReusableCandidateFields {
+  curator_status: string;
+  curator_rejection_reason: string | null;
+  curator_confidence: number | null;
+  curator_rank: number | null;
+  curator_model: string | null;
+  curator_prompt_version: string | null;
+  curator_reviewed_at: string | null;
+  style_tags: string[];
+  preview_status: string;
+  preview_bucket: string | null;
+  preview_storage_path: string | null;
+  preview_source_hash: string | null;
+  preview_model: string | null;
+  preview_generated_at: string | null;
+  preview_error_code: string | null;
+  times_suggested: number;
+  last_suggested_at: string | null;
+}
+
+type ReusableCandidateRow = ReusableCandidateFields & { combination_key: string };
+
+// Versioned publish: inserts the new version's rows as genuinely new rows
+// (never a delete-then-insert, and never a same-combination-key update onto a
+// row belonging to a different version -- the unique constraint is scoped to
+// (user_id, compiled_wardrobe_version, combination_key) precisely so this
+// insert can't collide across versions). finalize_wardrobe_compilation() is
+// the only thing that flips the published-version pointer, after verifying
+// this count, so a crash mid-write here just leaves inert unpublished rows.
 async function writeCandidates(
   admin: AdminClient,
   userId: string,
   jobId: string,
   compiledWardrobeVersion: string,
+  previousVersion: string | null,
+  affectedItemIds: ReadonlySet<string>,
   candidates: readonly GeneratedOutfitCandidate[],
 ): Promise<Map<string, string>> {
   if (candidates.length === 0) return new Map();
+
+  const reusableByCombinationKey = new Map<string, ReusableCandidateFields>();
+  if (previousVersion) {
+    const unaffectedKeys = candidates
+      .filter((candidate) => !candidate.items.some((item) => affectedItemIds.has(item.itemId)))
+      .map((candidate) => candidate.combinationKey);
+    if (unaffectedKeys.length > 0) {
+      const { data: previousRows } = await admin
+        .from("outfit_candidates")
+        .select(REUSABLE_CANDIDATE_COLUMNS)
+        .eq("user_id", userId)
+        .eq("status", "active")
+        .eq("compiled_wardrobe_version", previousVersion)
+        .in("combination_key", unaffectedKeys);
+      for (const row of (previousRows ?? []) as unknown as ReusableCandidateRow[]) {
+        reusableByCombinationKey.set(row.combination_key, {
+          curator_status: row.curator_status,
+          curator_rejection_reason: row.curator_rejection_reason,
+          curator_confidence: row.curator_confidence,
+          curator_rank: row.curator_rank,
+          curator_model: row.curator_model,
+          curator_prompt_version: row.curator_prompt_version,
+          curator_reviewed_at: row.curator_reviewed_at,
+          style_tags: row.style_tags,
+          preview_status: row.preview_status,
+          preview_bucket: row.preview_bucket,
+          preview_storage_path: row.preview_storage_path,
+          preview_source_hash: row.preview_source_hash,
+          preview_model: row.preview_model,
+          preview_generated_at: row.preview_generated_at,
+          preview_error_code: row.preview_error_code,
+          times_suggested: row.times_suggested,
+          last_suggested_at: row.last_suggested_at,
+        });
+      }
+    }
+  }
 
   const { data: upsertedCandidates, error: upsertCandidatesError } = await admin
     .from("outfit_candidates")
@@ -212,8 +282,9 @@ async function writeCandidates(
         preference_match: candidate.preferenceMatch,
         variety: candidate.variety,
         total_score: candidate.totalScore,
+        ...reusableByCombinationKey.get(candidate.combinationKey),
       })),
-      { onConflict: "user_id,combination_key" },
+      { onConflict: "user_id,compiled_wardrobe_version,combination_key" },
     )
     .select("id, combination_key");
   if (upsertCandidatesError) throw upsertCandidatesError;
@@ -675,7 +746,15 @@ export async function compileWardrobeForUser(userId: string, jobId: string) {
         maxCandidates: environment.WARDROBE_COMPILATION_MAX_CANDIDATES,
         maxFoundationsPerBucket: environment.WARDROBE_COMPILATION_MAX_FOUNDATIONS_PER_BUCKET,
       });
-      await writeCandidates(admin, userId, jobId, compiledWardrobeVersion, candidates);
+      await writeCandidates(
+        admin,
+        userId,
+        jobId,
+        compiledWardrobeVersion,
+        (initialState?.compiled_wardrobe_version as string | undefined) ?? null,
+        changeEvents.affectedItemIds,
+        candidates,
+      );
       candidateCount = candidates.length;
     }
 
