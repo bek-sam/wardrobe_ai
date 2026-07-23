@@ -1,72 +1,9 @@
 import { generatedOutfitSchema } from "@/features/outfits/schemas";
 
-const intents = new Set(["packing", "planning", "insight", "item_question", "outfit_request"]);
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const previewStatuses = new Set(["none", "queued", "generating", "ready", "failed"]);
-
-function isObject(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function nullableString(value: unknown, maximum: number) {
-  return typeof value === "string" && value.trim() ? value.slice(0, maximum) : null;
-}
-
-function nullableNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function publicWeather(value: unknown) {
-  if (!isObject(value)) return null;
-  const snapshot = isObject(value.snapshot) ? value.snapshot : {};
-  const location = isObject(value.location) ? value.location : {};
-  const constraints = isObject(value.constraints) ? value.constraints : {};
-  const tags = Array.isArray(constraints.tags)
-    ? constraints.tags
-        .filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim()))
-        .slice(0, 12)
-        .map((entry) => entry.slice(0, 80))
-    : [];
-
-  return {
-    date:
-      typeof value.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.date) ? value.date : null,
-    location: { name: nullableString(location.name, 160) },
-    snapshot: {
-      temperatureC: nullableNumber(snapshot.temperatureC),
-      feelsLikeC: nullableNumber(snapshot.feelsLikeC),
-      minimumTemperatureC: nullableNumber(snapshot.minimumTemperatureC),
-      maximumTemperatureC: nullableNumber(snapshot.maximumTemperatureC),
-      precipitationProbability: nullableNumber(snapshot.precipitationProbability),
-      precipitationMm: nullableNumber(snapshot.precipitationMm),
-      snowfallCm: nullableNumber(snapshot.snowfallCm),
-      windSpeedKph: nullableNumber(snapshot.windSpeedKph),
-      humidityPercent: nullableNumber(snapshot.humidityPercent),
-      spansDayAndNight:
-        typeof snapshot.spansDayAndNight === "boolean" ? snapshot.spansDayAndNight : null,
-    },
-    constraints: { tags },
-  };
-}
-
-// Never carries a signed URL: signed URLs are short-lived and this result can
-// be persisted (stylist chat history), so only a stable candidateId + status
-// + tags survive sanitization. A viewer fetches a fresh signed URL on demand
-// from GET /api/outfit-candidates/[candidateId]/preview.
-function publicPreview(value: unknown) {
-  if (!isObject(value)) return null;
-  const candidateId = nullableString(value.candidateId, 40);
-  if (!candidateId || !uuidPattern.test(candidateId)) return null;
-  const status =
-    typeof value.status === "string" && previewStatuses.has(value.status) ? value.status : "none";
-  const styleTags = Array.isArray(value.styleTags)
-    ? value.styleTags
-        .filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim()))
-        .slice(0, 5)
-        .map((entry) => entry.slice(0, 40))
-    : [];
-  return { candidateId, status, styleTags };
-}
+import { isObject } from "./history-primitives";
+import { publicPreview } from "./sanitize-public-preview";
+import { publicWeather } from "./sanitize-public-weather";
+import { intents, uuidPattern } from "./history-constants.data";
 
 /**
  * Reduces a stored orchestrator result to fields rendered by the product UI.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { consumeSse, parseSseBlock } from "@/features/stylist/sse";
+import { consumeSse } from "@/features/stylist/sse";
+import { parseSseBlock } from "@/features/stylist/parse-sse-block";
 
 describe("stylist SSE parser", () => {
   it("parses named events and ignores comments", () => {
