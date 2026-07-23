@@ -88,7 +88,7 @@ Resolve user/preferences/date/location/candidates → forecast → deterministic
 
 ## Code style
 
-**Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, and pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data) since splitting those for line count alone hurts readability for no benefit.
+**Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
 
 Folder conventions when a file grows past the limit:
 

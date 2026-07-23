@@ -30,6 +30,7 @@ export default defineConfig([
       "src/**/*.constants.ts",
       "src/**/*-data.ts",
       "src/**/*.data.ts",
+      "src/**/index.ts",
     ],
     rules: {
       "max-lines": ["error", { max: 50, skipBlankLines: true, skipComments: true }],

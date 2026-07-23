@@ -36,7 +36,7 @@ export type {
   HardFilterReason,
   HardFilterReasonCode,
   HardFilterResult,
-} from "./filters";
+} from "./filters.types";
 export type { LayeringAnalysis } from "./layering";
 export type {
   ActivityLevel,
