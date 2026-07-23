@@ -480,16 +480,46 @@ export function StylistWorkspace({
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewRequestBusy, setPreviewRequestBusy] = useState(false);
-  const [previewNotice, setPreviewNotice] = useState<string | null>(null);
+  // Scoped to the candidateId they were set for, so switching to a different
+  // recommendation's preview (a new candidateId) implicitly drops stale
+  // notices/overrides without needing an effect to reset them.
+  const [previewNoticeState, setPreviewNoticeState] = useState<{
+    candidateId: string;
+    message: string;
+  } | null>(null);
+  // Overrides recommendation.preview.status once the user asks for a preview
+  // in this session, so the UI reflects queued -> generating -> ready/failed
+  // as processOwnedOutfitPreviewJob runs, without waiting on a fresh
+  // recommendation from the stylist to pick up the new status.
+  const [previewStatusOverride, setPreviewStatusOverride] = useState<{
+    candidateId: string;
+    status: PreviewInfo["status"];
+  } | null>(null);
 
   const previewCandidateId = recommendation?.preview?.candidateId ?? null;
-  const previewStatus = recommendation?.preview?.status ?? null;
+  const previewLocalStatus =
+    previewStatusOverride?.candidateId === previewCandidateId ? previewStatusOverride.status : null;
+  const previewStatus = previewLocalStatus ?? recommendation?.preview?.status ?? null;
+  const previewNotice =
+    previewNoticeState?.candidateId === previewCandidateId ? previewNoticeState.message : null;
+  const setPreviewLocalStatus = useCallback(
+    (status: PreviewInfo["status"]) => {
+      if (previewCandidateId) setPreviewStatusOverride({ candidateId: previewCandidateId, status });
+    },
+    [previewCandidateId],
+  );
+  const setPreviewNotice = useCallback(
+    (message: string | null) => {
+      if (!previewCandidateId) return;
+      setPreviewNoticeState(message ? { candidateId: previewCandidateId, message } : null);
+    },
+    [previewCandidateId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       setPreviewImageUrl(null);
-      setPreviewNotice(null);
       if (!previewCandidateId || previewStatus !== "ready") return;
       try {
         const data = await requestJson<{ status: string; previewUrl: string | null }>(
@@ -509,17 +539,34 @@ export function StylistWorkspace({
     if (!previewCandidateId) return;
     setPreviewRequestBusy(true);
     setPreviewNotice(null);
+    setPreviewLocalStatus("queued");
     try {
-      const result = await requestJson<{ status: string }>(
+      const enqueued = await requestJson<{ status: string }>(
         `/api/outfit-candidates/${previewCandidateId}/preview`,
         { method: "POST" },
       );
-      setPreviewNotice(
-        result.status === "already_fresh"
-          ? "A preview is already ready."
-          : "Preview requested — this can take a minute. Check back shortly.",
+      if (enqueued.status === "already_fresh") {
+        setPreviewLocalStatus("ready");
+        setPreviewNotice("A preview is already ready.");
+        return;
+      }
+      // Immediately try to claim and render the job we just enqueued, so
+      // this completes without waiting on a scheduler to call the
+      // secret-gated internal worker route.
+      setPreviewLocalStatus("generating");
+      const processed = await requestJson<{ status: string }>(
+        `/api/outfit-candidates/${previewCandidateId}/preview/process`,
+        { method: "POST" },
       );
+      const nextStatus = previewStatuses.has(processed.status)
+        ? (processed.status as PreviewInfo["status"])
+        : "generating";
+      setPreviewLocalStatus(nextStatus);
+      if (nextStatus === "queued" || nextStatus === "generating") {
+        setPreviewNotice("Preview requested — this can take a minute. Check back shortly.");
+      }
     } catch (previewError) {
+      setPreviewLocalStatus("failed");
       setPreviewNotice(
         previewError instanceof Error
           ? previewError.message
@@ -528,7 +575,7 @@ export function StylistWorkspace({
     } finally {
       setPreviewRequestBusy(false);
     }
-  }, [previewCandidateId]);
+  }, [previewCandidateId, setPreviewLocalStatus, setPreviewNotice]);
 
   const loadConversationList = useCallback(async () => {
     if (!supabaseConfigured) return;
@@ -1227,12 +1274,11 @@ export function StylistWorkspace({
                       className="recommendation-preview__image"
                       src={previewImageUrl}
                     />
-                  ) : recommendation.preview.status === "queued" ||
-                    recommendation.preview.status === "generating" ? (
+                  ) : previewStatus === "queued" || previewStatus === "generating" ? (
                     <p className="recommendation-preview__status">
                       <SpinnerGap className="spin" size={14} /> Modeled preview is generating…
                     </p>
-                  ) : recommendation.preview.status === "failed" ? (
+                  ) : previewStatus === "failed" ? (
                     <p className="recommendation-preview__status">
                       <WarningCircle size={14} /> The last preview attempt failed.
                     </p>

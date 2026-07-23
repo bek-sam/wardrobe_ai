@@ -62,14 +62,157 @@ async function loadPrimaryCutout(
   );
 }
 
+type PreviewJobOutcome = "completed" | "failed" | "superseded";
+
+// Renders one already-claimed (status='running') outfit_preview_jobs row:
+// validates the candidate is still active and the user still has active
+// consent + a daily quota budget, downloads the identity reference + each
+// member item's cutout, calls the (already-existing, now multi-garment)
+// generateModeledPreview(), and stores the result under
+// wardrobe-generated/{userId}/{candidateId}/preview-{uuid}.png. Shared by the
+// service-role batch worker (processOutfitPreviewBatch) and the interactive
+// owned-claim path (processOwnedOutfitPreviewJob) -- the caller is
+// responsible for claiming the job first.
+async function processClaimedOutfitPreviewJob(
+  admin: AdminClient,
+  environment: ServerEnvironment,
+  job: OutfitPreviewJobRow,
+): Promise<PreviewJobOutcome> {
+  try {
+    const { data: candidate } = await admin
+      .from("outfit_candidates")
+      .select("id, status, outfit_candidate_items(item_id, role, sort_order)")
+      .eq("id", job.candidate_id)
+      .eq("user_id", job.user_id)
+      .maybeSingle();
+    const memberRows = ((candidate?.outfit_candidate_items ?? []) as CandidateMemberRow[])
+      .slice()
+      .sort((first, second) => first.sort_order - second.sort_order);
+    if (!candidate || candidate.status !== "active" || memberRows.length === 0) {
+      await admin.from("outfit_preview_jobs").update({ status: "superseded" }).eq("id", job.id);
+      return "superseded";
+    }
+
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("modeled_preview_consent, identity_reference_path")
+      .eq("id", job.user_id)
+      .maybeSingle();
+    if (!profile?.modeled_preview_consent || !profile.identity_reference_path) {
+      await admin.rpc("fail_outfit_preview_job", {
+        p_job_id: job.id,
+        p_user_id: job.user_id,
+        p_error_code: "consent_not_active",
+        p_error_message: "Modeled preview consent is not active.",
+        p_next_attempt_at: null,
+      });
+      return "failed";
+    }
+
+    const { data: quota } = await admin.rpc("service_check_and_increment_usage_window", {
+      p_user_id: job.user_id,
+      p_feature: "outfit_preview_generation",
+      p_limit: environment.PREVIEW_DAILY_LIMIT,
+      p_period: "day",
+      p_increment: 1,
+    });
+    if (!(quota as { allowed?: boolean } | null)?.allowed) {
+      await admin.rpc("fail_outfit_preview_job", {
+        p_job_id: job.id,
+        p_user_id: job.user_id,
+        p_error_code: "daily_preview_limit_reached",
+        p_error_message: "Daily preview generation limit reached.",
+        p_next_attempt_at: retryAt(job.attempt_count),
+      });
+      return "failed";
+    }
+
+    const { data: itemRows } = await admin
+      .from("wardrobe_items")
+      .select("id, category, color_names, pattern")
+      .eq("user_id", job.user_id)
+      .in(
+        "id",
+        memberRows.map((member) => member.item_id),
+      );
+    const itemsById = new Map((itemRows ?? []).map((row) => [row.id as string, row]));
+
+    const identityReference = await downloadPrivateObject(
+      admin,
+      environment.PROFILE_REFERENCES_BUCKET,
+      profile.identity_reference_path as string,
+      job.user_id,
+    );
+    const garmentCutouts = await Promise.all(
+      memberRows.map((member) => loadPrimaryCutout(admin, job.user_id, member.item_id)),
+    );
+    const prompt = buildOutfitPreviewPrompt(
+      memberRows.map((member) => {
+        const item = itemsById.get(member.item_id);
+        return {
+          role: member.role,
+          category: (item?.category as string | undefined) ?? "garment",
+          colorNames: (item?.color_names as string[] | undefined) ?? [],
+          pattern: (item?.pattern as string | null | undefined) ?? null,
+        };
+      }),
+    );
+    const previewBytes = await generateModeledPreview({
+      userId: job.user_id,
+      identityReference,
+      garmentCutouts,
+      prompt,
+    });
+
+    const path = `${job.user_id}/${job.candidate_id}/preview-${randomUUID()}.png`;
+    await uploadPrivateObject(
+      admin,
+      environment.WARDROBE_GENERATED_BUCKET,
+      path,
+      job.user_id,
+      previewBytes,
+      "image/png",
+    );
+    await admin.rpc("finalize_outfit_preview_job", {
+      p_job_id: job.id,
+      p_user_id: job.user_id,
+      p_bucket: environment.WARDROBE_GENERATED_BUCKET,
+      p_storage_path: path,
+      p_source_hash: job.source_hash,
+      p_model: environment.OPENAI_IMAGE_MODEL ?? "unconfigured",
+    });
+    return "completed";
+  } catch (error) {
+    const isMissingCutout = error instanceof MissingCutoutError;
+    console.error("Outfit preview generation failed", {
+      jobId: job.id,
+      candidateId: job.candidate_id,
+      errorCode: isMissingCutout ? "missing_cutout" : "preview_generation_failed",
+      message: error instanceof Error ? error.message : String(error),
+    });
+    try {
+      await admin.rpc("fail_outfit_preview_job", {
+        p_job_id: job.id,
+        p_user_id: job.user_id,
+        p_error_code: isMissingCutout ? "missing_cutout" : "preview_generation_failed",
+        p_error_message: isMissingCutout
+          ? "One or more items in this outfit has no approved cutout image yet."
+          : "Modeled preview generation failed.",
+        // A missing cutout will never resolve on its own -- don't burn the
+        // retry budget on a job that can't succeed until the user re-imports
+        // the item through the photo pipeline.
+        p_next_attempt_at: isMissingCutout ? null : retryAt(job.attempt_count),
+      });
+    } catch {
+      // Best-effort failure bookkeeping; never let this escape the caller.
+    }
+    return "failed";
+  }
+}
+
 /**
- * Claims a batch of queued/failed outfit_preview_jobs and renders each one:
- * validates the candidate is still active and the user still has active
- * consent + a daily quota budget, downloads the identity reference + each
- * member item's cutout, calls the (already-existing, now multi-garment)
- * generateModeledPreview(), and stores the result under
- * wardrobe-generated/{userId}/{candidateId}/preview-{uuid}.png. Never runs on
- * the request path -- only from the internal worker route.
+ * Claims a batch of queued/failed outfit_preview_jobs and renders each one.
+ * Never runs on the request path -- only from the internal worker route.
  */
 export async function processOutfitPreviewBatch(limit = 10) {
   const admin = createAdminClient();
@@ -86,141 +229,40 @@ export async function processOutfitPreviewBatch(limit = 10) {
   let superseded = 0;
 
   for (const job of jobs) {
-    try {
-      const { data: candidate } = await admin
-        .from("outfit_candidates")
-        .select("id, status, outfit_candidate_items(item_id, role, sort_order)")
-        .eq("id", job.candidate_id)
-        .eq("user_id", job.user_id)
-        .maybeSingle();
-      const memberRows = ((candidate?.outfit_candidate_items ?? []) as CandidateMemberRow[])
-        .slice()
-        .sort((first, second) => first.sort_order - second.sort_order);
-      if (!candidate || candidate.status !== "active" || memberRows.length === 0) {
-        await admin.from("outfit_preview_jobs").update({ status: "superseded" }).eq("id", job.id);
-        superseded += 1;
-        continue;
-      }
-
-      const { data: profile } = await admin
-        .from("profiles")
-        .select("modeled_preview_consent, identity_reference_path")
-        .eq("id", job.user_id)
-        .maybeSingle();
-      if (!profile?.modeled_preview_consent || !profile.identity_reference_path) {
-        await admin.rpc("fail_outfit_preview_job", {
-          p_job_id: job.id,
-          p_user_id: job.user_id,
-          p_error_code: "consent_not_active",
-          p_error_message: "Modeled preview consent is not active.",
-          p_next_attempt_at: null,
-        });
-        continue;
-      }
-
-      const { data: quota } = await admin.rpc("service_check_and_increment_usage_window", {
-        p_user_id: job.user_id,
-        p_feature: "outfit_preview_generation",
-        p_limit: environment.PREVIEW_DAILY_LIMIT,
-        p_period: "day",
-        p_increment: 1,
-      });
-      if (!(quota as { allowed?: boolean } | null)?.allowed) {
-        await admin.rpc("fail_outfit_preview_job", {
-          p_job_id: job.id,
-          p_user_id: job.user_id,
-          p_error_code: "daily_preview_limit_reached",
-          p_error_message: "Daily preview generation limit reached.",
-          p_next_attempt_at: retryAt(job.attempt_count),
-        });
-        failed += 1;
-        continue;
-      }
-
-      const { data: itemRows } = await admin
-        .from("wardrobe_items")
-        .select("id, category, color_names, pattern")
-        .eq("user_id", job.user_id)
-        .in(
-          "id",
-          memberRows.map((member) => member.item_id),
-        );
-      const itemsById = new Map((itemRows ?? []).map((row) => [row.id as string, row]));
-
-      const identityReference = await downloadPrivateObject(
-        admin,
-        environment.PROFILE_REFERENCES_BUCKET,
-        profile.identity_reference_path as string,
-        job.user_id,
-      );
-      const garmentCutouts = await Promise.all(
-        memberRows.map((member) => loadPrimaryCutout(admin, job.user_id, member.item_id)),
-      );
-      const prompt = buildOutfitPreviewPrompt(
-        memberRows.map((member) => {
-          const item = itemsById.get(member.item_id);
-          return {
-            role: member.role,
-            category: (item?.category as string | undefined) ?? "garment",
-            colorNames: (item?.color_names as string[] | undefined) ?? [],
-            pattern: (item?.pattern as string | null | undefined) ?? null,
-          };
-        }),
-      );
-      const previewBytes = await generateModeledPreview({
-        userId: job.user_id,
-        identityReference,
-        garmentCutouts,
-        prompt,
-      });
-
-      const path = `${job.user_id}/${job.candidate_id}/preview-${randomUUID()}.png`;
-      await uploadPrivateObject(
-        admin,
-        environment.WARDROBE_GENERATED_BUCKET,
-        path,
-        job.user_id,
-        previewBytes,
-        "image/png",
-      );
-      await admin.rpc("finalize_outfit_preview_job", {
-        p_job_id: job.id,
-        p_user_id: job.user_id,
-        p_bucket: environment.WARDROBE_GENERATED_BUCKET,
-        p_storage_path: path,
-        p_source_hash: job.source_hash,
-        p_model: environment.OPENAI_IMAGE_MODEL ?? "unconfigured",
-      });
-      completed += 1;
-    } catch (error) {
-      failed += 1;
-      const isMissingCutout = error instanceof MissingCutoutError;
-      console.error("Outfit preview generation failed", {
-        jobId: job.id,
-        candidateId: job.candidate_id,
-        errorCode: isMissingCutout ? "missing_cutout" : "preview_generation_failed",
-        message: error instanceof Error ? error.message : String(error),
-      });
-      try {
-        await admin.rpc("fail_outfit_preview_job", {
-          p_job_id: job.id,
-          p_user_id: job.user_id,
-          p_error_code: isMissingCutout ? "missing_cutout" : "preview_generation_failed",
-          p_error_message: isMissingCutout
-            ? "One or more items in this outfit has no approved cutout image yet."
-            : "Modeled preview generation failed.",
-          // A missing cutout will never resolve on its own -- don't burn the
-          // retry budget on a job that can't succeed until the user re-imports
-          // the item through the photo pipeline.
-          p_next_attempt_at: isMissingCutout ? null : retryAt(job.attempt_count),
-        });
-      } catch {
-        // Best-effort failure bookkeeping; never let this escape the loop.
-      }
-    }
+    const outcome = await processClaimedOutfitPreviewJob(admin, environment, job);
+    if (outcome === "completed") completed += 1;
+    else if (outcome === "failed") failed += 1;
+    else superseded += 1;
   }
 
   return { claimed: jobs.length, completed, failed, superseded };
+}
+
+/**
+ * Renders a single job already claimed via claim_owned_outfit_preview_job --
+ * the interactive counterpart to processOutfitPreviewBatch. Lets a request
+ * from the owning user process their own just-enqueued preview synchronously
+ * so it completes without a scheduler calling the internal worker route.
+ * Re-selects the row by id (scoped to expectedUserId) rather than trusting
+ * data returned by the RPC, mirroring processResearchRun.
+ */
+export async function processOwnedOutfitPreviewJob(jobId: string, expectedUserId: string) {
+  const admin = createAdminClient();
+  const environment = getServerEnvironment();
+  const { data, error } = await admin
+    .from("outfit_preview_jobs")
+    .select("id, user_id, candidate_id, source_hash, attempt_count")
+    .eq("id", jobId)
+    .eq("user_id", expectedUserId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Outfit preview job not found.");
+  const outcome = await processClaimedOutfitPreviewJob(
+    admin,
+    environment,
+    data as OutfitPreviewJobRow,
+  );
+  return { jobId, candidateId: data.candidate_id as string, outcome };
 }
 
 async function matchOutfitToCandidateAndEnqueue(
