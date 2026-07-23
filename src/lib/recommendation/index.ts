@@ -50,7 +50,7 @@ export type {
   BalancedPlannerResult,
   PlannerRejection,
   PlannerRejectionReason,
-} from "./planner";
+} from "./planner.types";
 export type {
   ResearchConfidenceInput,
   ResearchConfidenceResult,
