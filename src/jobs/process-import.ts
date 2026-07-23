@@ -42,7 +42,7 @@ function safeFailure(error: unknown) {
   return { code: "processing_failed", message: "The image could not be processed." };
 }
 
-async function imageAssetMetadata(bytes: Buffer, generationModel?: string | null) {
+export async function imageAssetMetadata(bytes: Buffer, generationModel?: string | null) {
   const metadata = await sharp(bytes).metadata();
   if (!metadata.width || !metadata.height) throw new Error("Generated image metadata is invalid.");
   return {
