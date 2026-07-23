@@ -5,7 +5,15 @@ import { Button } from "@/components/ui/Button";
 import { formatWeekRange } from "./planner-dates";
 import type { PlannerToolbarProps } from "./planner.types";
 
-export function PlannerToolbar({ anchor, today, dates, loading, profile, onShift, onToday }: PlannerToolbarProps) {
+export function PlannerToolbar({
+  anchor,
+  today,
+  dates,
+  loading,
+  profile,
+  onShift,
+  onToday,
+}: PlannerToolbarProps) {
   return (
     <div className="planner-toolbar">
       <button
