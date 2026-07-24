@@ -1,10 +1,8 @@
 import { GoogleLogo, LockKey } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
-import {
-  AuthFeedback,
-  sanitizeReturnTo,
-  type SearchParamValue,
-} from "@/components/ui/AuthFeedback";
+import { AuthFeedback } from "@/components/ui/AuthFeedback";
+import { sanitizeReturnTo } from "@/components/ui/sanitize-return-to";
+import type { SearchParamValue } from "@/components/ui/search-param-value";
 import { Button } from "@/components/ui/Button";
 import { TextField } from "@/components/ui/TextField";
 import { isSupabaseConfigured } from "@/lib/env/client";
