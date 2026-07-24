@@ -1,27 +1,10 @@
+import { detectCues } from "./detect-cues";
+
 // WardrobeItem has no dedicated garment-length field, so this is documented,
 // deliberate string-heuristic keyword matching against subcategory/fit text
 // -- consistent with how the rest of the deterministic layer already infers
 // missing structured signal from free text (e.g. item-role.ts's category
 // normalization).
-
-type LengthCue = "cropped" | "long" | "high_rise" | "wide" | "slim" | "regular";
-
-const LENGTH_KEYWORDS: readonly [LengthCue, RegExp][] = [
-  ["cropped", /\bcrop(ped)?\b/i],
-  ["long", /\blong(line)?\b|\btunic\b|\bmaxi\b/i],
-  ["high_rise", /\bhigh[\s-]?rise\b|\bhigh[\s-]?waist(ed)?\b/i],
-  ["wide", /\bwide[\s-]?leg\b|\bflare[d]?\b|\bbaggy\b/i],
-  ["slim", /\bslim\b|\bskinny\b|\bstraight\b/i],
-];
-
-function detectCues(text: string): Set<LengthCue> {
-  const cues = new Set<LengthCue>();
-  for (const [cue, pattern] of LENGTH_KEYWORDS) {
-    if (pattern.test(text)) cues.add(cue);
-  }
-  return cues;
-}
-
 export function evaluateLengthProportion(
   top: { subcategory: string | null; fit: string | null },
   bottom: { subcategory: string | null; fit: string | null },
