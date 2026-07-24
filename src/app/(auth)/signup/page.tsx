@@ -1,10 +1,12 @@
-import { GoogleLogo, LockKey } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
+
 import { AuthFeedback } from "@/components/ui/AuthFeedback";
+import { AuthIntegrationNote } from "@/components/ui/AuthIntegrationNote";
+import { OAuthGoogleButton } from "@/components/ui/OAuthGoogleButton";
 import type { SearchParamValue } from "@/components/ui/search-param-value";
-import { Button } from "@/components/ui/Button";
-import { TextField } from "@/components/ui/TextField";
 import { isSupabaseConfigured } from "@/lib/env/client";
+
+import { SignupForm } from "./SignupForm";
 
 export const metadata = { title: "Create account" };
 
@@ -24,67 +26,18 @@ export default async function SignupPage({ searchParams }: { searchParams: Signu
         <h1 id="signup-title">Start with what you own.</h1>
         <p>Create an account, then add your first piece in a few minutes.</p>
       </div>
-      <button
-        className="oauth-button"
-        type="button"
-        aria-describedby="signup-integration-note"
-        disabled
-      >
-        <GoogleLogo size={19} weight="bold" /> Continue with Google
-      </button>
+      <OAuthGoogleButton describedBy="signup-integration-note" />
       <AuthFeedback error={query.error} notice={query.notice} />
       <div className="auth-divider">
         <span>or use email</span>
       </div>
-      <form className="auth-form" action="/api/auth/signup" method="post">
-        <TextField
-          autoComplete="given-name"
-          id="signup-name"
-          label="First name"
-          name="firstName"
-          placeholder="How should we greet you?"
-          required
-        />
-        <TextField
-          autoComplete="email"
-          id="signup-email"
-          label="Email address"
-          name="email"
-          placeholder="you@example.com"
-          required
-          type="email"
-        />
-        <TextField
-          autoComplete="new-password"
-          hint="Use at least 8 characters."
-          id="signup-password"
-          label="Password"
-          name="password"
-          placeholder="Create a password"
-          required
-          type="password"
-        />
-        <label className="check-row">
-          <input name="acceptedTerms" required type="checkbox" value="yes" />{" "}
-          <span>
-            I agree to the <Link href="/terms">Terms</Link> and have read the{" "}
-            <Link href="/privacy">Privacy Policy</Link>.
-          </span>
-        </label>
-        <Button disabled={!configured} fullWidth type="submit">
-          Create my wardrobe
-        </Button>
-      </form>
-      <p
-        className={`auth-integration-note${configured ? " auth-integration-note--ready" : ""}`}
+      <SignupForm configured={configured} />
+      <AuthIntegrationNote
+        configured={configured}
         id="signup-integration-note"
-        role={configured ? undefined : "status"}
-      >
-        <LockKey size={14} />{" "}
-        {configured
-          ? "Secure email account creation is ready. Google sign-in has not been enabled yet."
-          : "Preview mode: configure Supabase to enable secure account creation."}
-      </p>
+        readyMessage="Secure email account creation is ready. Google sign-in has not been enabled yet."
+        previewMessage="Preview mode: configure Supabase to enable secure account creation."
+      />
       <p className="auth-card__switch">
         Already have an account? <Link href="/login">Log in</Link>
       </p>

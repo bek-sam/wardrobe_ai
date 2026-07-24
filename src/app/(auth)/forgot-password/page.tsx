@@ -1,10 +1,12 @@
 import { ArrowLeft, Envelope } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
+
 import { AuthFeedback } from "@/components/ui/AuthFeedback";
+import { AuthIntegrationNote } from "@/components/ui/AuthIntegrationNote";
 import type { SearchParamValue } from "@/components/ui/search-param-value";
-import { Button } from "@/components/ui/Button";
-import { TextField } from "@/components/ui/TextField";
 import { isSupabaseConfigured } from "@/lib/env/client";
+
+import { ForgotPasswordForm } from "./ForgotPasswordForm";
 
 export const metadata = { title: "Reset password" };
 
@@ -32,28 +34,13 @@ export default async function ForgotPasswordPage({
         <p>Enter your email and the account service will send a secure reset link.</p>
       </div>
       <AuthFeedback error={query.error} notice={query.notice} />
-      <form className="auth-form" action="/api/auth/forgot-password" method="post">
-        <TextField
-          autoComplete="email"
-          id="reset-email"
-          label="Email address"
-          name="email"
-          placeholder="you@example.com"
-          required
-          type="email"
-        />
-        <Button disabled={!configured} fullWidth type="submit">
-          Send reset link
-        </Button>
-      </form>
-      <p
-        className={`auth-integration-note${configured ? " auth-integration-note--ready" : ""}`}
-        role={configured ? undefined : "status"}
-      >
-        {configured
-          ? "Password recovery is connected and sends a secure, time-limited email link."
-          : "Preview mode: configure Supabase to enable password recovery."}
-      </p>
+      <ForgotPasswordForm configured={configured} />
+      <AuthIntegrationNote
+        configured={configured}
+        readyMessage="Password recovery is connected and sends a secure, time-limited email link."
+        previewMessage="Preview mode: configure Supabase to enable password recovery."
+        icon={false}
+      />
       <Link className="auth-back" href="/login">
         <ArrowLeft size={15} /> Back to login
       </Link>
