@@ -8,12 +8,13 @@ export function scoreCandidateRow(
   row: Record<string, unknown>,
   resolvedItems: readonly WardrobeItem[],
   input: RetrieveStoredOutfitInput,
+  requiredOccasionTags: readonly string[] | undefined,
 ): number {
   const perItemScores = resolvedItems.map(
     (item) =>
       scoreWardrobeCandidate(item, {
         weather: input.weather,
-        occasionTags: input.occasion ? [input.occasion] : undefined,
+        occasionTags: requiredOccasionTags,
         targetFormality: input.targetFormality,
         preferences: input.preferences,
         selectedItems: resolvedItems.filter((candidate) => candidate.id !== item.id),

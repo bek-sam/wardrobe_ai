@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveOccasionContext } from "@/lib/recommendation/occasion-context";
+import {
+  confidentOccasionTags,
+  resolveOccasionContext,
+} from "@/lib/recommendation/occasion-context";
 
 describe("resolveOccasionContext", () => {
   it("resolves a job interview to the interview category, not work", () => {
@@ -77,5 +80,26 @@ describe("resolveOccasionContext", () => {
     const result = resolveOccasionContext("black tie gala this weekend");
     expect(result.confidence).toBeGreaterThan(0.5);
     expect(result.unresolvedQuestions).toEqual([]);
+  });
+});
+
+describe("confidentOccasionTags", () => {
+  it("returns the category's tags for a confident match", () => {
+    const context = resolveOccasionContext("business dinner with clients");
+    expect(confidentOccasionTags(context)).toEqual(["business", "work"]);
+  });
+
+  it("returns undefined for low-confidence unmatched text", () => {
+    const context = resolveOccasionContext("xyz something unrelated");
+    expect(confidentOccasionTags(context)).toBeUndefined();
+  });
+
+  it("returns undefined for empty input", () => {
+    expect(confidentOccasionTags(resolveOccasionContext(null))).toBeUndefined();
+  });
+
+  it("is inclusive at exactly the confidence threshold", () => {
+    expect(confidentOccasionTags({ category: "casual", confidence: 0.5 })).toEqual(["casual"]);
+    expect(confidentOccasionTags({ category: "casual", confidence: 0.49 })).toBeUndefined();
   });
 });

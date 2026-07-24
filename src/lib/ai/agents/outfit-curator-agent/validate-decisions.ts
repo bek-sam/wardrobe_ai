@@ -12,4 +12,9 @@ export function validateCuratorDecisions(
   if (invalidIds.length > 0) {
     throw new Error("The outfit curator returned a decision outside the authenticated shortlist.");
   }
+  const returnedIds = new Set(ids);
+  const missingIds = [...candidateIds].filter((id) => !returnedIds.has(id));
+  if (missingIds.length > 0) {
+    throw new Error("The outfit curator did not return a decision for every candidate.");
+  }
 }

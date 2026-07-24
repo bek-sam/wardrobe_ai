@@ -1,5 +1,6 @@
 import { runStylistAgent } from "@/lib/ai/agents/stylist-agent";
 import { getWardrobeCandidates } from "@/lib/ai/tools/get-wardrobe";
+import { confidentOccasionTags } from "@/lib/recommendation";
 
 import { buildAgentWeatherContext } from "./agent-weather-context";
 import { buildCandidateSummary, buildRecentWear } from "./candidate-summary";
@@ -12,11 +13,12 @@ export async function generateCandidateOutfit({
   feedback,
   weather,
   weatherWarning,
+  occasionContext,
 }: ComposeOutfitInput) {
   const candidates = await getWardrobeCandidates({
     userId: input.userId,
     weather: weather?.constraints,
-    occasionTags: input.occasion ? [input.occasion] : [],
+    occasionTags: confidentOccasionTags(occasionContext) ?? [],
     targetFormality: input.targetFormality ?? style.preferred_formality ?? undefined,
     favoriteColors: style.favorite_colors,
     avoidedColors: style.avoided_colors,

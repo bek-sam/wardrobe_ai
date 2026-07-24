@@ -20,6 +20,7 @@ export async function upsertCandidateRows(
         job_id: jobId,
         occasion_tags: candidate.occasionTags,
         occasion_category: candidate.occasionCategory,
+        occasion_categories: candidate.occasionCategories,
         weather_tags: candidate.weatherTags,
         formality_level: candidate.formalityLevel,
         warmth_level: candidate.warmthLevel,

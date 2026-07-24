@@ -8,6 +8,7 @@ import {
 import { addWeatherBiasedVariants } from "./add-weather-variants";
 import { buildGeneratedCandidate } from "./build-candidate";
 import { buildOptionalRoleVariants } from "./build-optional-variants";
+import { mergeOrAddCandidate } from "./merge-or-add-candidate";
 import { rankFoundations } from "./rank-foundations";
 import type { CompilationBucket, GeneratedOutfitCandidate } from "./types";
 
@@ -34,9 +35,7 @@ export function populateCandidateProposals(
       variantContext: CandidateScoringContext,
     ) {
       const built = buildGeneratedCandidate(variant, foundation, variantContext, bucket);
-      if (!built || metadataByProposalId.has(built.proposal.id)) return;
-      proposals.push(built.proposal);
-      metadataByProposalId.set(built.proposal.id, built.metadata);
+      mergeOrAddCandidate(proposals, metadataByProposalId, built, bucket);
     }
 
     const rankedFoundations = rankFoundations(foundations, context, maxFoundationsPerBucket);

@@ -14,7 +14,7 @@ export async function resolveNextJobStatus(admin: SupabaseClient, job: ImportJob
     : statuses.some((status) => status === "review_crop")
       ? "review_crop"
       : "review_metadata";
-  await admin
+  const { data } = await admin
     .from("import_jobs")
     .update({
       status: nextStatus,
@@ -25,6 +25,8 @@ export async function resolveNextJobStatus(admin: SupabaseClient, job: ImportJob
     })
     .eq("id", job.id)
     .eq("user_id", job.user_id)
-    .neq("status", "complete");
-  return nextStatus;
+    .not("status", "in", "(complete,cancelled)")
+    .select("id")
+    .maybeSingle();
+  return data ? nextStatus : "cancelled";
 }

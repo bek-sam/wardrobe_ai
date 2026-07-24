@@ -11,6 +11,7 @@ export async function processImportJob(jobId: string, expectedUserId?: string) {
   try {
     if (["queued", "failed", "analyzing"].includes(job.status)) {
       const candidateCount = await analyzeJob(job);
+      if (candidateCount === null) return { jobId: job.id, status: "cancelled" };
       if (candidateCount === 0) return { jobId: job.id, status: "failed" };
     }
 

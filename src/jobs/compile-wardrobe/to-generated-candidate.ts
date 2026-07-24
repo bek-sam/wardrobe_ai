@@ -20,6 +20,9 @@ export function toGeneratedCandidate(row: CuratorCandidateRow): GeneratedOutfitC
     occasionTags: [],
     occasionCategory: (row.occasion_category ??
       "casual") as GeneratedOutfitCandidate["occasionCategory"],
+    occasionCategories: [
+      (row.occasion_category ?? "casual") as GeneratedOutfitCandidate["occasionCategory"],
+    ],
     weatherTags: row.weather_tags ?? [],
     formalityLevel: row.formality_level,
     warmthLevel: row.warmth_level,

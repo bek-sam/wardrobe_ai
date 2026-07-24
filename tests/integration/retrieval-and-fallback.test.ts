@@ -5,6 +5,7 @@ import {
   recordFallbackOutfitCandidate,
   retrieveStoredOutfitCandidates,
 } from "@/lib/ai/agents/retrieve-outfit-candidate";
+import { resolveOccasionContext } from "@/lib/recommendation";
 
 import { createAdminClient, createTestUser, deleteTestUser, insertWardrobeItem } from "./helpers";
 
@@ -49,6 +50,7 @@ async function seedActiveCandidate(
       compiled_wardrobe_version: version,
       status: "active",
       occasion_category: overrides.occasionCategory ?? null,
+      occasion_categories: overrides.occasionCategory ? [overrides.occasionCategory] : [],
       total_score: 0.8,
       preference_match: 0.7,
       times_suggested: overrides.timesSuggested ?? 0,
@@ -75,7 +77,10 @@ async function seedActiveCandidate(
 describe("retrieveStoredOutfitCandidates(): library retrieval", () => {
   it("returns nothing when the user has no compiled library", async () => {
     const user = await freshUser();
-    const results = await retrieveStoredOutfitCandidates({ userId: user.id });
+    const results = await retrieveStoredOutfitCandidates({
+      userId: user.id,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(results).toEqual([]);
   });
 
@@ -94,7 +99,10 @@ describe("retrieveStoredOutfitCandidates(): library retrieval", () => {
       .update({ dirty_since: new Date().toISOString() })
       .eq("user_id", user.id);
 
-    const results = await retrieveStoredOutfitCandidates({ userId: user.id });
+    const results = await retrieveStoredOutfitCandidates({
+      userId: user.id,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(results).toEqual([]);
   });
 
@@ -110,7 +118,7 @@ describe("retrieveStoredOutfitCandidates(): library retrieval", () => {
 
     const results = await retrieveStoredOutfitCandidates({
       userId: user.id,
-      occasion: "business dinner with clients",
+      occasionContext: resolveOccasionContext("business dinner with clients"),
     });
     expect(results.length).toBeGreaterThan(0);
     expect(results[0]?.selectionReason).toBe("safest");
@@ -134,7 +142,10 @@ describe("retrieveStoredOutfitCandidates(): library retrieval", () => {
       .update({ availability_status: "laundry" })
       .eq("id", bottom.id);
 
-    const results = await retrieveStoredOutfitCandidates({ userId: user.id });
+    const results = await retrieveStoredOutfitCandidates({
+      userId: user.id,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(
       results.every((candidate) => !candidate.items.some((item) => item.item_id === bottom.id)),
     ).toBe(true);

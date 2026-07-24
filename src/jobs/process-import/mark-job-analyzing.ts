@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ImportJobRow } from "./types";
 
 export async function markJobAnalyzing(admin: SupabaseClient, job: ImportJobRow) {
-  await admin
+  const { data } = await admin
     .from("import_jobs")
     .update({
       status: "analyzing",
@@ -15,5 +15,8 @@ export async function markJobAnalyzing(admin: SupabaseClient, job: ImportJobRow)
     })
     .eq("id", job.id)
     .eq("user_id", job.user_id)
-    .in("status", ["queued", "failed", "analyzing"]);
+    .in("status", ["queued", "failed", "analyzing"])
+    .select("id")
+    .maybeSingle();
+  return Boolean(data);
 }

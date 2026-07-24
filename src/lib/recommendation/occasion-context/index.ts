@@ -4,7 +4,12 @@ export {
   OCCASION_CATEGORIES,
   TIMES_OF_DAY,
 } from "./constants.data";
-export { occasionCategoryProfile, occasionCategoryTags } from "./category-lookup";
+export {
+  confidentOccasionTags,
+  OCCASION_CATEGORY_CONFIDENT_THRESHOLD,
+  occasionCategoryProfile,
+  occasionCategoryTags,
+} from "./category-lookup";
 export { resolveOccasionContext } from "./resolve";
 
 export type { ActivityLevel, IndoorOutdoor, OccasionCategory, TimeOfDay } from "./constants.data";

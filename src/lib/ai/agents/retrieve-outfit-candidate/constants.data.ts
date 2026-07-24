@@ -5,6 +5,5 @@ export const RETRIEVAL_MIN_SCORE = 0.55;
 // weather/occasion/exposure filtering runs across this whole pool instead of
 // truncating before it gets a chance to apply.
 export const RETRIEVAL_POOL_LIMIT = 150;
-export const OCCASION_CATEGORY_MIN_CONFIDENCE = 0.5;
 export const MAX_RESULTS = 3;
 export const RECENT_SUGGESTION_WINDOW_MS = 3 * 24 * 60 * 60 * 1000;

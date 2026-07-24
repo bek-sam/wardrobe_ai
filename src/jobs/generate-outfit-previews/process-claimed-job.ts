@@ -8,6 +8,7 @@ import type {
   PreviewJobOutcome,
   ServerEnvironment,
 } from "./types";
+import { verifyCutoutsAvailable } from "./verify-cutouts-available";
 
 // Renders one already-claimed (status='running') outfit_preview_jobs row:
 // validates the candidate is still active and the user still has active
@@ -26,6 +27,12 @@ export async function processClaimedOutfitPreviewJob(
   try {
     const memberRows = await loadActiveCandidateMembers(admin, job);
     if (!memberRows) return "superseded";
+
+    await verifyCutoutsAvailable(
+      admin,
+      job.user_id,
+      memberRows.map((member) => member.item_id),
+    );
 
     const consent = await checkConsentAndQuota(admin, environment, job);
     if (!consent) return "failed";

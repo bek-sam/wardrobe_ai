@@ -1,3 +1,5 @@
+import { confidentOccasionTags } from "@/lib/recommendation";
+
 import { evaluateCandidateRow } from "./evaluate-candidate";
 import { fetchCandidatePool } from "./fetch-candidate-pool";
 import { selectDiverseCandidates } from "./select-results";
@@ -20,9 +22,10 @@ export async function retrieveStoredOutfitCandidates(
   const pool = await fetchCandidatePool(input);
   if (!pool) return [];
 
+  const requiredOccasionTags = confidentOccasionTags(input.occasionContext);
   const evaluated: EvaluatedCandidate[] = [];
   for (const row of pool.rows) {
-    const candidate = evaluateCandidateRow(row, pool.itemsById, input);
+    const candidate = evaluateCandidateRow(row, pool.itemsById, input, requiredOccasionTags);
     if (candidate) evaluated.push(candidate);
   }
 

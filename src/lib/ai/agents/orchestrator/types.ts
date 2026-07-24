@@ -2,6 +2,7 @@ import type { retrieveStoredOutfitCandidates } from "@/lib/ai/agents/retrieve-ou
 import type { getPreferences } from "@/lib/ai/tools/get-preferences";
 import type { getWeatherForStyling } from "@/lib/ai/tools/get-weather";
 import type { getServerEnvironment } from "@/lib/env/server";
+import type { OccasionContext } from "@/lib/recommendation";
 
 export type StylistOrchestratorInput = {
   userId: string;
@@ -21,6 +22,7 @@ export type ComposeOutfitInput = {
   feedback: Awaited<ReturnType<typeof getPreferences>>["feedback"];
   weather: Awaited<ReturnType<typeof getWeatherForStyling>>;
   weatherWarning: string | null;
+  occasionContext: OccasionContext;
 };
 
 export type TryServeRetrievedOutfitInput = {

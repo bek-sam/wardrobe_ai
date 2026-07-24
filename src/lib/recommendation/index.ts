@@ -12,8 +12,10 @@ export {
 } from "./planner";
 export {
   ACTIVITY_LEVELS,
+  confidentOccasionTags,
   INDOOR_OUTDOOR_VALUES,
   OCCASION_CATEGORIES,
+  OCCASION_CATEGORY_CONFIDENT_THRESHOLD,
   occasionCategoryProfile,
   occasionCategoryTags,
   resolveOccasionContext,

@@ -10,7 +10,8 @@ import type { ImportJobRow } from "./types";
 export async function analyzeJob(job: ImportJobRow) {
   const admin = createAdminClient();
   const environment = getServerEnvironment();
-  await markJobAnalyzing(admin, job);
+  const claimed = await markJobAnalyzing(admin, job);
+  if (!claimed) return null;
 
   const normalized = await downloadAndNormalizeOriginal(admin, job);
   const { catalog, candidates } = await buildAnalysisCandidates(

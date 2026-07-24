@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveOccasionContext } from "@/lib/recommendation";
+
 import { ITEM_IDS, makeWardrobeItem, USER_ID } from "./fixtures";
 
 type FakeResult = { data: unknown; error: unknown };
@@ -14,7 +16,7 @@ function fakeQuery(initialResult: FakeResult) {
       calls.push({ method, args });
       return builder;
     };
-  for (const method of ["select", "eq", "neq", "order", "limit", "in", "is"]) {
+  for (const method of ["select", "eq", "neq", "order", "limit", "in", "is", "contains"]) {
     builder[method] = record(method);
   }
   builder.maybeSingle = () => {
@@ -93,7 +95,10 @@ describe("retrieveStoredOutfitCandidates", () => {
 
   it("returns nothing when the compiled library is missing, dirty, or unversioned", async () => {
     stateQuery.state.result = { data: null, error: null };
-    const result = await retrieveStoredOutfitCandidates({ userId: USER_ID });
+    const result = await retrieveStoredOutfitCandidates({
+      userId: USER_ID,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(result).toEqual([]);
     stateQuery.state.result = {
       data: { dirty_since: null, compiled_wardrobe_version: "v1" },
@@ -101,20 +106,31 @@ describe("retrieveStoredOutfitCandidates", () => {
     };
   });
 
-  it("prefilters by occasion_category when the occasion resolves with confidence", async () => {
-    await retrieveStoredOutfitCandidates({ userId: USER_ID, occasion: "business dinner" });
-    const eqCalls = candidatesQuery.calls.filter((call) => call.method === "eq");
-    expect(eqCalls).toContainEqual({ method: "eq", args: ["occasion_category", "business"] });
+  it("prefilters by occasion_categories overlap when the occasion resolves with confidence", async () => {
+    await retrieveStoredOutfitCandidates({
+      userId: USER_ID,
+      occasionContext: resolveOccasionContext("business dinner"),
+    });
+    const containsCalls = candidatesQuery.calls.filter((call) => call.method === "contains");
+    expect(containsCalls).toContainEqual({
+      method: "contains",
+      args: ["occasion_categories", ["business"]],
+    });
   });
 
-  it("does not prefilter by occasion_category for low-confidence/unmatched text", async () => {
-    await retrieveStoredOutfitCandidates({ userId: USER_ID, occasion: "xyz nonsense" });
-    const eqCalls = candidatesQuery.calls.filter((call) => call.method === "eq");
-    expect(eqCalls.some((call) => call.args[0] === "occasion_category")).toBe(false);
+  it("does not prefilter by occasion_categories for low-confidence/unmatched text", async () => {
+    await retrieveStoredOutfitCandidates({
+      userId: USER_ID,
+      occasionContext: resolveOccasionContext("xyz nonsense"),
+    });
+    expect(candidatesQuery.calls.some((call) => call.method === "contains")).toBe(false);
   });
 
   it("returns up to 3 diverse alternatives ranked safest first", async () => {
-    const results = await retrieveStoredOutfitCandidates({ userId: USER_ID });
+    const results = await retrieveStoredOutfitCandidates({
+      userId: USER_ID,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(results.length).toBeGreaterThan(0);
     expect(results.length).toBeLessThanOrEqual(3);
     expect(results[0]?.selectionReason).toBe("safest");
@@ -126,7 +142,10 @@ describe("retrieveStoredOutfitCandidates", () => {
   });
 
   it("prefers the least-suggested candidate for the underused pick", async () => {
-    const results = await retrieveStoredOutfitCandidates({ userId: USER_ID });
+    const results = await retrieveStoredOutfitCandidates({
+      userId: USER_ID,
+      occasionContext: resolveOccasionContext(null),
+    });
     const underused = results.find((entry) => entry.selectionReason === "underused");
     expect(underused).toBeDefined();
     expect(underused?.candidateId).not.toBe(

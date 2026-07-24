@@ -38,7 +38,8 @@ export async function persistAnalysisResults(
           : "No distinct garments were detected. Try a clearer or closer photo.",
     })
     .eq("id", job.id)
-    .eq("user_id", job.user_id);
+    .eq("user_id", job.user_id)
+    .not("status", "in", "(complete,cancelled)");
 
   await admin.from("agent_runs").insert({
     user_id: job.user_id,

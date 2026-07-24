@@ -21,14 +21,16 @@ export async function runPreviewWorker(environment: ServerEnvironment) {
   let completed = 0;
   let failed = 0;
   let superseded = 0;
+  let skipped = 0;
   while (Date.now() - startedAt < EXECUTION_BUDGET_MS) {
-    const batch = await processOutfitPreviewBatch(10);
+    const batch = await processOutfitPreviewBatch(startedAt, EXECUTION_BUDGET_MS);
     claimed += batch.claimed;
     completed += batch.completed;
     failed += batch.failed;
     superseded += batch.superseded;
-    if (batch.claimed === 0) break;
+    skipped += batch.skipped;
+    if (batch.claimed === 0 || batch.skipped > 0) break;
   }
 
-  return { claimed, completed, failed, superseded };
+  return { claimed, completed, failed, superseded, skipped };
 }

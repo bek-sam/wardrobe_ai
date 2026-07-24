@@ -142,6 +142,32 @@ describe("runOutfitCuratorAgent", () => {
     );
   });
 
+  it("throws when the model omits a decision for a supplied candidate", async () => {
+    parseMock.mockResolvedValue({
+      id: "resp_1",
+      usage: {},
+      output_parsed: {
+        decisions: [
+          {
+            candidateId: CANDIDATE_A,
+            decision: "select",
+            aestheticTags: [],
+            occasionCategory: "casual",
+            rankAmongNewItemOutfits: null,
+            confidence: 0.8,
+            reasoning: "Clean and coherent.",
+            rejectionReason: null,
+          },
+        ],
+        summary: "Reviewed one outfit.",
+      },
+    });
+
+    await expect(runOutfitCuratorAgent(baseInput())).rejects.toThrow(
+      /did not return a decision for every candidate/i,
+    );
+  });
+
   it("returns the parsed result when every decision is within the supplied candidate set", async () => {
     parseMock.mockResolvedValue({
       id: "resp_1",

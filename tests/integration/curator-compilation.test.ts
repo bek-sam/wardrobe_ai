@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "vitest";
 
 import { compileWardrobeForUser } from "@/jobs/compile-wardrobe";
 import { retrieveStoredOutfitCandidates } from "@/lib/ai/agents/retrieve-outfit-candidate";
+import { resolveOccasionContext } from "@/lib/recommendation";
 
 import {
   createAdminClient,
@@ -86,7 +87,10 @@ describe("compileWardrobeForUser(): curator failure fallback and incremental com
 
     // The deterministic library must remain fully retrievable -- curator
     // failure never blocks stylist retrieval.
-    const retrieved = await retrieveStoredOutfitCandidates({ userId: user.id });
+    const retrieved = await retrieveStoredOutfitCandidates({
+      userId: user.id,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(retrieved.length).toBeGreaterThan(0);
   });
 
@@ -125,7 +129,10 @@ describe("compileWardrobeForUser(): curator failure fallback and incremental com
       .update({ curator_status: "rejected", curator_rejection_reason: "color_conflict" })
       .eq("id", candidateId as string);
 
-    const retrieved = await retrieveStoredOutfitCandidates({ userId: user.id });
+    const retrieved = await retrieveStoredOutfitCandidates({
+      userId: user.id,
+      occasionContext: resolveOccasionContext(null),
+    });
     expect(retrieved.every((candidate) => candidate.candidateId !== candidateId)).toBe(true);
 
     const { data: stillStored } = await admin

@@ -30,6 +30,7 @@ export function buildCandidateMetadata(
     variety: average(allScores.map((score) => score.components.variety)),
     occasionTags: [...bucket.occasionTags],
     occasionCategory: bucket.key,
+    occasionCategories: [bucket.key],
     weatherTags: weatherTagsForOutfit(selected),
     formalityLevel: formalityLevels.length ? Math.round(average(formalityLevels)) : null,
     warmthLevel: warmthLevels.length ? Math.round(average(warmthLevels)) : null,

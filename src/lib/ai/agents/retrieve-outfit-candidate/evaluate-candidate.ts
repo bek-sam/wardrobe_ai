@@ -12,6 +12,7 @@ export function evaluateCandidateRow(
   row: Record<string, unknown>,
   itemsById: Map<string, WardrobeItem>,
   input: RetrieveStoredOutfitInput,
+  requiredOccasionTags: readonly string[] | undefined,
 ): EvaluatedCandidate | null {
   const memberRows = (row.outfit_candidate_items ?? []) as RetrievedOutfitCandidateItem[];
   if (memberRows.length === 0) return null;
@@ -27,14 +28,14 @@ export function evaluateCandidateRow(
     (item) =>
       getHardFilterReasons(item, {
         weather: input.weather,
-        requiredOccasionTags: input.occasion ? [input.occasion] : undefined,
+        requiredOccasionTags,
       }).length > 0,
   );
   if (hasHardConflict) return null;
 
   return {
     candidateId: row.id as string,
-    score: scoreCandidateRow(row, resolvedItems, input),
+    score: scoreCandidateRow(row, resolvedItems, input, requiredOccasionTags),
     preferenceMatch: (row.preference_match as number | null) ?? 0,
     timesSuggested: (row.times_suggested as number | null) ?? 0,
     items: memberRows,

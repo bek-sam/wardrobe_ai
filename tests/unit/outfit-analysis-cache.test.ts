@@ -13,6 +13,15 @@ function baseInput() {
     styleKnowledgeVersion: "2026-07-22.1",
     curatorModel: "test-model",
     curatorPromptVersion: "v1",
+    occasionCategory: "business" as string | null,
+    totalScore: 0.8,
+    formalityLevel: 3 as number | null,
+    warmthLevel: 2 as number | null,
+    colorHarmony: 0.7 as number | null,
+    layeringQuality: 0.6 as number | null,
+    occasionFormality: 0.75 as number | null,
+    preferenceMatch: 0.5 as number | null,
+    variety: 0.4 as number | null,
   };
 }
 
@@ -51,6 +60,15 @@ describe("computeAnalysisHash", () => {
         itemMetadataVersions: { ...baseInput().itemMetadataVersions, "item-a": "changed" },
       }),
     ).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), occasionCategory: "casual" })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), totalScore: 0.1 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), formalityLevel: 5 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), warmthLevel: 5 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), colorHarmony: 0.1 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), layeringQuality: 0.1 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), occasionFormality: 0.1 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), preferenceMatch: 0.1 })).not.toBe(base);
+    expect(computeAnalysisHash({ ...baseInput(), variety: 0.1 })).not.toBe(base);
   });
 
   it("produces a 64-character hex sha256 digest", () => {

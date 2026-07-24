@@ -1,7 +1,7 @@
-import { resolveOccasionContextWithEscalation } from "@/lib/ai/agents/occasion-agent";
+import { OCCASION_CATEGORY_CONFIDENT_THRESHOLD } from "@/lib/recommendation";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { OCCASION_CATEGORY_MIN_CONFIDENCE, RETRIEVAL_POOL_LIMIT } from "./constants.data";
+import { RETRIEVAL_POOL_LIMIT } from "./constants.data";
 import { fetchResolvedItemsById } from "./fetch-resolved-items";
 import type { RetrievedOutfitCandidateItem, RetrieveStoredOutfitInput } from "./types";
 
@@ -13,8 +13,6 @@ export async function fetchCandidatePool(input: RetrieveStoredOutfitInput) {
     .eq("user_id", input.userId)
     .maybeSingle();
   if (!state || state.dirty_since || !state.compiled_wardrobe_version) return null;
-
-  const occasionContext = await resolveOccasionContextWithEscalation(input.occasion, input.userId);
 
   let query = admin
     .from("outfit_candidates")
@@ -29,8 +27,8 @@ export async function fetchCandidatePool(input: RetrieveStoredOutfitInput) {
     .eq("compiled_wardrobe_version", state.compiled_wardrobe_version)
     .order("total_score", { ascending: false })
     .limit(RETRIEVAL_POOL_LIMIT);
-  if (occasionContext.confidence >= OCCASION_CATEGORY_MIN_CONFIDENCE) {
-    query = query.eq("occasion_category", occasionContext.category);
+  if (input.occasionContext.confidence >= OCCASION_CATEGORY_CONFIDENT_THRESHOLD) {
+    query = query.contains("occasion_categories", [input.occasionContext.category]);
   }
 
   const { data: rows, error } = await query;

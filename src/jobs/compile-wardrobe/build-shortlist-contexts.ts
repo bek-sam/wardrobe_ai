@@ -1,12 +1,11 @@
 import { computeAnalysisHash, getCachedAnalysis } from "@/lib/ai/agents/outfit-analysis-cache";
 import type { CuratorCandidateInput } from "@/lib/ai/agents/outfit-curator-agent";
-import { OUTFIT_CURATOR_PROMPT_VERSION } from "@/lib/ai/prompts/outfit-curator";
 import { buildCuratorContext } from "@/lib/compilation/build-curator-context";
 import type { CuratorCandidateDecision } from "@/lib/ai/schemas/outfit-curator";
-import { STYLE_KNOWLEDGE_VERSION } from "@/lib/style-knowledge";
 
 import type { WardrobeItem } from "@/features/wardrobe/types";
 
+import { buildAnalysisHashInput } from "./build-analysis-hash-input";
 import { resolveCandidateItems } from "./resolve-candidate-items";
 import { toGeneratedCandidate } from "./to-generated-candidate";
 import type { AdminClient, CuratorCandidateRow } from "./types";
@@ -31,16 +30,15 @@ export async function buildShortlistContexts(
     if (!resolvedItems) continue;
     candidateKeyById.set(row.id, row.combination_key);
 
-    const hash = computeAnalysisHash({
-      itemIds: resolvedItems.map((item) => item.id),
-      itemMetadataVersions: Object.fromEntries(
-        resolvedItems.map((item) => [item.id, item.updated_at]),
+    const hash = computeAnalysisHash(
+      buildAnalysisHashInput(
+        row,
+        resolvedItems.map((item) => item.id),
+        Object.fromEntries(resolvedItems.map((item) => [item.id, item.updated_at])),
+        curatorModel,
+        preferences,
       ),
-      preferenceVersion: preferences.preferenceVersion,
-      styleKnowledgeVersion: STYLE_KNOWLEDGE_VERSION,
-      curatorModel,
-      curatorPromptVersion: OUTFIT_CURATOR_PROMPT_VERSION,
-    });
+    );
     hashByCandidateId.set(row.id, hash);
 
     const cached = await getCachedAnalysis(admin, userId, hash);

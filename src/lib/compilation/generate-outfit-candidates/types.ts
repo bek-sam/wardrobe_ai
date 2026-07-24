@@ -24,6 +24,10 @@ export interface GeneratedOutfitCandidate {
   variety: number;
   occasionTags: string[];
   occasionCategory: OccasionCategory;
+  // Every bucket a combination fits, not just the one that produced it first
+  // -- see populate-candidates.ts's addVariant merge logic. Always includes
+  // occasionCategory.
+  occasionCategories: OccasionCategory[];
   weatherTags: string[];
   formalityLevel: number | null;
   warmthLevel: number | null;

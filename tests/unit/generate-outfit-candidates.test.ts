@@ -109,6 +109,27 @@ describe("generateOutfitCandidates", () => {
     }
   });
 
+  it("merges occasionCategories across buckets that produce the same combination instead of dropping it", () => {
+    const buckets: CompilationBucket[] = [
+      { key: "casual", occasionTags: ["casual"], targetFormality: 1 },
+      { key: "errands", occasionTags: ["errands"], targetFormality: 1 },
+    ];
+    const candidates = generateOutfitCandidates(items, { buckets, maxCandidates: 200 });
+    expect(candidates.length).toBeGreaterThan(0);
+
+    // combinationKey still dedups to one row per combination, never duplicated.
+    const combinationKeys = candidates.map((candidate) => candidate.combinationKey);
+    expect(new Set(combinationKeys).size).toBe(combinationKeys.length);
+
+    const mergedIntoBoth = candidates.filter(
+      (candidate) => candidate.occasionCategories.length > 1,
+    );
+    expect(mergedIntoBoth.length).toBeGreaterThan(0);
+    for (const candidate of mergedIntoBoth) {
+      expect(candidate.occasionCategories).toEqual(expect.arrayContaining(["casual", "errands"]));
+    }
+  });
+
   it("tags weather_tags from aggregate warmth and marks rain-safe outfits", () => {
     const candidates = generateOutfitCandidates(items, { maxCandidates: 200 });
     const withRainSafeShoes = candidates.filter((candidate) =>

@@ -1,4 +1,5 @@
 import type { WardrobeItem, WardrobeItemRole } from "@/features/wardrobe/types";
+import type { OccasionContext } from "@/lib/recommendation";
 import type { ClothingConstraints } from "@/lib/weather";
 
 export interface RetrievalPreferenceContext {
@@ -11,7 +12,7 @@ export interface RetrievalPreferenceContext {
 
 export interface RetrieveStoredOutfitInput {
   userId: string;
-  occasion?: string | null;
+  occasionContext: OccasionContext;
   targetFormality?: number;
   weather?: ClothingConstraints;
   preferences?: RetrievalPreferenceContext;

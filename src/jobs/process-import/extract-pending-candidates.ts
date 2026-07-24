@@ -1,10 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { extractCandidate } from "./extract-candidate";
+import { isJobCancelled } from "./job-status";
 import { safeFailure } from "./safe-failure";
 import type { ImportCandidateRow, ImportJobRow } from "./types";
 
 export async function extractPendingCandidates(admin: SupabaseClient, job: ImportJobRow) {
+  if (await isJobCancelled(admin, job)) return;
+
   const { data, error } = await admin
     .from("import_job_candidates")
     .select("*")
