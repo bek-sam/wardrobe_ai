@@ -10,7 +10,7 @@ const optionalUnboundedPositiveInteger = z.preprocess(
   z.coerce.number().int().positive().optional(),
 );
 
-const serverEnvironmentSchema = z.object({
+export const serverEnvironmentSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
   NEXT_PUBLIC_SUPABASE_URL: optionalUrl,
   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: optionalString,
@@ -57,23 +57,3 @@ const serverEnvironmentSchema = z.object({
 });
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;
-
-let cachedEnvironment: ServerEnvironment | undefined;
-
-export function getServerEnvironment(): ServerEnvironment {
-  cachedEnvironment ??= serverEnvironmentSchema.parse(process.env);
-  return cachedEnvironment;
-}
-
-export function requireEnvironment<K extends keyof ServerEnvironment>(
-  ...keys: K[]
-): ServerEnvironment & Required<Pick<ServerEnvironment, K>> {
-  const environment = getServerEnvironment();
-  const missing = keys.filter((key) => !environment[key]);
-
-  if (missing.length > 0) {
-    throw new Error(`Missing required server configuration: ${missing.join(", ")}`);
-  }
-
-  return environment as ServerEnvironment & Required<Pick<ServerEnvironment, K>>;
-}
