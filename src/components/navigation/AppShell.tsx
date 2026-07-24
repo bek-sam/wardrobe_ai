@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import { DesktopNavigation, MobileNavigation, MobileTopbar } from "./AppNavigation";
+
+import { DesktopNavigation } from "./DesktopNavigation";
+import { MobileNavigation } from "./MobileNavigation";
+import { MobileTopbar } from "./MobileTopbar";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
