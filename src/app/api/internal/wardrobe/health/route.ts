@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 
+import { authorizedWorkerRequest } from "@/app/api/_lib/worker-auth";
 import { getServerEnvironment } from "@/lib/env/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-import { authorized } from "./authorize";
 import { fetchQueueStats } from "./fetch-queue-stats";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     environment.WARDROBE_COMPILATION_WORKER_SECRET ??
     environment.IMPORT_WORKER_SECRET ??
     environment.CRON_SECRET;
-  if (!authorized(request, secret)) {
+  if (!authorizedWorkerRequest(request, secret)) {
     return NextResponse.json(
       { error: { code: "not_authorized", message: "Worker authorization is required." } },
       { status: 401 },
