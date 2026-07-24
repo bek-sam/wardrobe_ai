@@ -1,18 +1,12 @@
 import type { OccasionCategory } from "@/lib/recommendation";
 
-export interface OccasionStyleProfile {
-  category: OccasionCategory;
-  narrative: string;
-  formalityRange: readonly [number, number];
-  colorGuidance: string;
-  avoid: readonly string[];
-}
+import type { OccasionStyleProfile } from "./types";
 
 // One entry per existing OCCASION_CATEGORIES value (imported, never
 // redefined) -- a richer, narrative counterpart to
 // recommendation/occasion-context.ts's occasionCategoryProfile(), which only
 // returns a numeric targetFormality/tags pair for compile-time buckets.
-const PROFILES: Record<OccasionCategory, OccasionStyleProfile> = {
+export const PROFILES: Record<OccasionCategory, OccasionStyleProfile> = {
   casual: {
     category: "casual",
     narrative: "Relaxed, everyday dressing with room for personal style.",
@@ -112,7 +106,3 @@ const PROFILES: Record<OccasionCategory, OccasionStyleProfile> = {
     avoid: ["anything precious or hard to care for"],
   },
 };
-
-export function occasionStyleProfile(category: OccasionCategory): OccasionStyleProfile {
-  return PROFILES[category];
-}
