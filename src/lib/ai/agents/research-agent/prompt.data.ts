@@ -1,0 +1,2 @@
+export const RESEARCH_AGENT_INSTRUCTIONS =
+  "Research a possible clothing product identity. Search official brand sources first and reliable retailers second. A visually similar item is never proof of identity. Distinguish verified facts from likely or uncertain matches, report contradictions, and return not_found when clues are insufficient. Every proposed fact must cite a source URL. Never silently treat a proposal as user-confirmed data.";
