@@ -1,26 +1,7 @@
 import sharp from "sharp";
 
-export type ImageLimits = {
-  maxBytes: number;
-  maxPixels: number;
-  maxEdge: number;
-  minEdge: number;
-};
-
-export const DEFAULT_IMAGE_LIMITS: ImageLimits = {
-  maxBytes: 20 * 1024 * 1024,
-  maxPixels: 40_000_000,
-  maxEdge: 12_000,
-  minEdge: 64,
-};
-
-export type ValidatedImage = {
-  bytes: Buffer;
-  mimeType: "image/png";
-  width: number;
-  height: number;
-  originalFormat: "jpeg" | "png" | "webp";
-};
+import { DEFAULT_IMAGE_LIMITS } from "./default-limits.data";
+import type { ImageLimits, ValidatedImage } from "./types";
 
 export async function validateAndNormalizeImage(
   input: Buffer,
@@ -58,38 +39,5 @@ export async function validateAndNormalizeImage(
     width: normalized.width,
     height: normalized.height,
     originalFormat: metadata.format as ValidatedImage["originalFormat"],
-  };
-}
-
-export type CutoutDiagnostics = {
-  visiblePixelRatio: number;
-  touchesCanvasEdge: boolean;
-  width: number;
-  height: number;
-};
-
-export async function inspectTransparentCutout(bytes: Buffer): Promise<CutoutDiagnostics> {
-  const { data, info } = await sharp(bytes)
-    .ensureAlpha()
-    .raw()
-    .toBuffer({ resolveWithObject: true });
-  let visiblePixels = 0;
-  let touchesCanvasEdge = false;
-
-  for (let pixel = 0, index = 0; pixel < info.width * info.height; pixel += 1, index += 4) {
-    if ((data[index + 3] ?? 0) <= 8) continue;
-    visiblePixels += 1;
-    const x = pixel % info.width;
-    const y = Math.floor(pixel / info.width);
-    if (x === 0 || y === 0 || x === info.width - 1 || y === info.height - 1) {
-      touchesCanvasEdge = true;
-    }
-  }
-
-  return {
-    visiblePixelRatio: visiblePixels / (info.width * info.height),
-    touchesCanvasEdge,
-    width: info.width,
-    height: info.height,
   };
 }
