@@ -1,29 +1,4 @@
-export const RESEARCH_MATCH_STATUSES = ["verified", "likely", "uncertain", "not_found"] as const;
-export const RESEARCH_SOURCE_TYPES = [
-  "official_brand",
-  "retailer",
-  "marketplace",
-  "other",
-] as const;
-
-export type ResearchMatchStatus = (typeof RESEARCH_MATCH_STATUSES)[number];
-export type ResearchSourceType = (typeof RESEARCH_SOURCE_TYPES)[number];
-
-export interface ResearchConfidenceInput {
-  confidence?: number | null;
-  sourceTypes?: readonly ResearchSourceType[];
-  exactIdentifierMatch?: boolean;
-  userConfirmedBrand?: boolean;
-  matchingTextClues?: number;
-  visualSimilarityOnly?: boolean;
-  candidateFound?: boolean;
-}
-
-export interface ResearchConfidenceResult {
-  status: ResearchMatchStatus;
-  confidence: number;
-  reasons: string[];
-}
+import type { ResearchConfidenceInput, ResearchConfidenceResult } from "./types";
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
