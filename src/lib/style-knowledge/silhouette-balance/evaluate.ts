@@ -1,25 +1,4 @@
-export type SilhouetteWeight = "fitted" | "regular" | "relaxed" | "oversized";
-
-const FITTED_KEYWORDS = ["fitted", "slim", "skinny", "tight", "bodycon", "tailored"];
-const RELAXED_KEYWORDS = ["relaxed", "loose", "wide", "wide-leg", "wide leg", "baggy"];
-const OVERSIZED_KEYWORDS = ["oversized", "oversize", "boxy"];
-
-function normalize(value: string) {
-  return value.trim().toLowerCase();
-}
-
-export function classifySilhouetteWeight(
-  fit: string | null,
-  silhouette: string | null,
-): SilhouetteWeight {
-  const combined = `${fit ?? ""} ${silhouette ?? ""}`.trim();
-  if (!combined) return "regular";
-  const normalized = normalize(combined);
-  if (OVERSIZED_KEYWORDS.some((keyword) => normalized.includes(keyword))) return "oversized";
-  if (FITTED_KEYWORDS.some((keyword) => normalized.includes(keyword))) return "fitted";
-  if (RELAXED_KEYWORDS.some((keyword) => normalized.includes(keyword))) return "relaxed";
-  return "regular";
-}
+import type { SilhouetteWeight } from "./classify";
 
 export function evaluateSilhouetteBalance(
   topWeight: SilhouetteWeight,
