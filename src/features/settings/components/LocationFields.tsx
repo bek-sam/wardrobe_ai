@@ -1,4 +1,5 @@
-import { SelectField, TextField } from "@/components/ui/FormField";
+import { SelectField } from "@/components/ui/SelectField";
+import { TextField } from "@/components/ui/TextField";
 
 import { TimezoneSelectField } from "./TimezoneSelectField";
 import type { LocationFormState } from "./settings.types";

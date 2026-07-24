@@ -1,4 +1,4 @@
-import { TextField } from "@/components/ui/FormField";
+import { TextField } from "@/components/ui/TextField";
 
 const SIZE_FIELDS = [
   { key: "topSize", id: "settings-size-top", label: "Tops" },

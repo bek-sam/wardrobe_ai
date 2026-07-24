@@ -1,4 +1,4 @@
-import { TextareaField } from "@/components/ui/FormField";
+import { TextareaField } from "@/components/ui/TextareaField";
 
 export function StyleNotesFields({
   disabled,

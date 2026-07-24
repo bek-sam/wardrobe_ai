@@ -6,7 +6,7 @@ import {
   type SearchParamValue,
 } from "@/components/ui/AuthFeedback";
 import { Button } from "@/components/ui/Button";
-import { TextField } from "@/components/ui/FormField";
+import { TextField } from "@/components/ui/TextField";
 import { isSupabaseConfigured } from "@/lib/env/client";
 
 export const metadata = { title: "Log in" };

@@ -1,4 +1,4 @@
-import { TextField } from "@/components/ui/FormField";
+import { TextField } from "@/components/ui/TextField";
 
 export function ColorFitFields({
   disabled,

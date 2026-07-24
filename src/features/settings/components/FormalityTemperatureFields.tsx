@@ -1,4 +1,4 @@
-import { SelectField } from "@/components/ui/FormField";
+import { SelectField } from "@/components/ui/SelectField";
 
 export function FormalityTemperatureFields({
   disabled,

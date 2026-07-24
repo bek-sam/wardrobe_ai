@@ -1,4 +1,4 @@
-import { TextField } from "@/components/ui/FormField";
+import { TextField } from "@/components/ui/TextField";
 
 import { LocaleSelectField } from "./LocaleSelectField";
 import type { ProfileFormState } from "./settings.types";

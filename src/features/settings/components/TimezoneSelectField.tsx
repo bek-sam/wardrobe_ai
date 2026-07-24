@@ -1,4 +1,4 @@
-import { SelectField } from "@/components/ui/FormField";
+import { SelectField } from "@/components/ui/SelectField";
 import { timezoneOptions } from "@/features/settings/style-options.data";
 
 export function TimezoneSelectField({
