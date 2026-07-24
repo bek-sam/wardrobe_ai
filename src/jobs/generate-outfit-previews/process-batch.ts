@@ -19,6 +19,13 @@ const PREVIEW_LEASE_SECONDS = 300;
  * request path -- only from the internal worker route.
  */
 export async function processOutfitPreviewBatch(startedAt: number, budgetMs: number) {
+  if (Date.now() - startedAt > budgetMs) {
+    // Budget already gone before claiming -- skip the RPC entirely instead
+    // of claiming a batch of 300s leases only to mark them all skipped, which
+    // would otherwise strand those leases idle for up to 5 minutes.
+    return { claimed: 0, completed: 0, failed: 0, superseded: 0, skipped: 0 };
+  }
+
   const admin = createAdminClient();
   const environment = getServerEnvironment();
   const { data, error } = await admin.rpc("claim_outfit_preview_jobs", {

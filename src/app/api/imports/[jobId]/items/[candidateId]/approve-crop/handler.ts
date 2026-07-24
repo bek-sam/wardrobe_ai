@@ -16,16 +16,26 @@ export async function handleApproveCrop(
   candidateId: string,
 ) {
   const admin = createAdminClient();
-  const { waiting, job } = await claimCropApproval(admin, userId, jobId, candidateId);
 
   try {
+    const { waiting, job } = await claimCropApproval(admin, userId, jobId, candidateId);
     const environment = getServerEnvironment();
-    await enforceAiUsageLimits(supabase, {
-      feature: "image_generation",
-      dailyLimit: environment.DAILY_IMAGE_LIMIT,
-      rollingBucket: "image_generation",
-      rollingLimit: environment.IMAGE_RATE_LIMIT_PER_MINUTE,
-    });
+
+    try {
+      await enforceAiUsageLimits(supabase, {
+        feature: "image_generation",
+        dailyLimit: environment.DAILY_IMAGE_LIMIT,
+        rollingBucket: "image_generation",
+        rollingLimit: environment.IMAGE_RATE_LIMIT_PER_MINUTE,
+      });
+    } catch (quotaError) {
+      await revertCropApprovalClaim(admin, userId, jobId, candidateId, {
+        status: "failed",
+        errorCode: "quota_exceeded",
+        errorMessage: "Daily image generation limit reached.",
+      });
+      throw quotaError;
+    }
 
     const cropAssetMetadata = await regenerateCrop(
       admin,

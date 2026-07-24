@@ -66,7 +66,7 @@ describe("analyzeJob", () => {
       catalog: { responseId: "resp_1", usage: {} },
       candidates: [{}, {}],
     });
-    persistAnalysisResultsMock.mockResolvedValue(undefined);
+    persistAnalysisResultsMock.mockResolvedValue(2);
 
     const result = await analyzeJob(JOB as never);
 

@@ -20,7 +20,5 @@ export async function analyzeJob(job: ImportJobRow) {
     job,
     normalized,
   );
-  await persistAnalysisResults(admin, environment, job, normalized, catalog, candidates);
-
-  return candidates.length;
+  return persistAnalysisResults(admin, environment, job, normalized, catalog, candidates);
 }

@@ -1,4 +1,7 @@
-import type { AnalysisHashInput } from "@/lib/ai/agents/outfit-analysis-cache";
+import {
+  CURATOR_SIGNAL_FIELDS,
+  type AnalysisHashInput,
+} from "@/lib/ai/agents/outfit-analysis-cache";
 import { OUTFIT_CURATOR_PROMPT_VERSION } from "@/lib/ai/prompts/outfit-curator";
 import { STYLE_KNOWLEDGE_VERSION } from "@/lib/style-knowledge";
 
@@ -12,6 +15,10 @@ export function buildAnalysisHashInput(
   curatorModel: string,
   preferences: PreferenceContext,
 ): AnalysisHashInput {
+  const signals = Object.fromEntries(
+    CURATOR_SIGNAL_FIELDS.map(({ key, column }) => [key, row[column as keyof CuratorCandidateRow]]),
+  ) as Pick<AnalysisHashInput, (typeof CURATOR_SIGNAL_FIELDS)[number]["key"]>;
+
   return {
     itemIds: resolvedItemIds,
     itemMetadataVersions,
@@ -19,14 +26,6 @@ export function buildAnalysisHashInput(
     styleKnowledgeVersion: STYLE_KNOWLEDGE_VERSION,
     curatorModel,
     curatorPromptVersion: OUTFIT_CURATOR_PROMPT_VERSION,
-    occasionCategory: row.occasion_category,
-    totalScore: row.total_score,
-    formalityLevel: row.formality_level,
-    warmthLevel: row.warmth_level,
-    colorHarmony: row.color_harmony,
-    layeringQuality: row.layering_quality,
-    occasionFormality: row.occasion_formality,
-    preferenceMatch: row.preference_match,
-    variety: row.variety,
+    ...signals,
   };
 }

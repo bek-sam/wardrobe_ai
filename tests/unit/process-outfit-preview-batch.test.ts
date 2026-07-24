@@ -67,4 +67,17 @@ describe("processOutfitPreviewBatch", () => {
     expect(result).toEqual({ claimed: 3, completed: 1, failed: 0, superseded: 0, skipped: 2 });
     expect(processClaimedMock).toHaveBeenCalledTimes(1);
   });
+
+  it("skips claiming entirely when the budget is already exhausted, leaving no lease to waste", async () => {
+    const { processOutfitPreviewBatch } =
+      await import("@/jobs/generate-outfit-previews/process-batch");
+    const startedAt = Date.now();
+    vi.advanceTimersByTime(200);
+
+    const result = await processOutfitPreviewBatch(startedAt, 100);
+
+    expect(result).toEqual({ claimed: 0, completed: 0, failed: 0, superseded: 0, skipped: 0 });
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(processClaimedMock).not.toHaveBeenCalled();
+  });
 });

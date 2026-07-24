@@ -1,12 +1,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
+import { excludeTerminalJobStatuses } from "./job-status";
 import { safeFailure } from "./safe-failure";
 import type { ImportJobRow } from "./types";
 
 export async function failJob(job: ImportJobRow, error: unknown) {
   const failure = safeFailure(error);
   const admin = createAdminClient();
-  await admin
+  const query = admin
     .from("import_jobs")
     .update({
       status: "failed",
@@ -17,6 +18,6 @@ export async function failJob(job: ImportJobRow, error: unknown) {
       next_attempt_at: new Date(Date.now() + 30_000).toISOString(),
     })
     .eq("id", job.id)
-    .eq("user_id", job.user_id)
-    .not("status", "in", "(complete,cancelled)");
+    .eq("user_id", job.user_id);
+  await excludeTerminalJobStatuses(query);
 }

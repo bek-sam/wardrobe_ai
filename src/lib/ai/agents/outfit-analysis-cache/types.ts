@@ -24,6 +24,23 @@ export interface AnalysisHashInput {
   variety: number | null;
 }
 
+// Single source of truth for the curator numeric-signal fields shared
+// between AnalysisHashInput, computeAnalysisHash's canonicalization, and
+// buildAnalysisHashInput's row mapping -- previously each hand-listed the
+// same 9 field names independently, risking one being missed when a 10th
+// signal is added later.
+export const CURATOR_SIGNAL_FIELDS = [
+  { key: "occasionCategory", column: "occasion_category" },
+  { key: "totalScore", column: "total_score" },
+  { key: "formalityLevel", column: "formality_level" },
+  { key: "warmthLevel", column: "warmth_level" },
+  { key: "colorHarmony", column: "color_harmony" },
+  { key: "layeringQuality", column: "layering_quality" },
+  { key: "occasionFormality", column: "occasion_formality" },
+  { key: "preferenceMatch", column: "preference_match" },
+  { key: "variety", column: "variety" },
+] as const satisfies readonly { key: keyof AnalysisHashInput; column: string }[];
+
 export interface WriteCachedAnalysisInput {
   userId: string;
   hash: string;

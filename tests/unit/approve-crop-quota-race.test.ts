@@ -106,8 +106,19 @@ describe("handleApproveCrop: quota-consumed-before-claim race (#9b)", () => {
     const candidateUpdates = calls.filter(
       (call) => call.table === "import_job_candidates" && call.method === "update",
     );
-    expect(candidateUpdates).toHaveLength(2);
+    expect(candidateUpdates).toHaveLength(3);
+    expect(candidateUpdates[0]!.args[0]).toMatchObject({ status: "regenerating_crop" });
     expect(candidateUpdates[1]!.args[0]).toEqual({
+      status: "failed",
+      error_code: "quota_exceeded",
+      error_message: "Daily image generation limit reached.",
+      crop_approved_at: null,
+    });
+    // The outer catch's unconditional revert also fires, but against real
+    // Postgres it is a no-op: it is still guarded by
+    // .eq("status", "regenerating_crop"), which no longer matches after the
+    // quota-specific revert above already moved the row to "failed".
+    expect(candidateUpdates[2]!.args[0]).toEqual({
       status: "review_crop",
       crop_approved_at: null,
     });

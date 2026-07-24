@@ -4,7 +4,10 @@ import type { catalogGarments } from "@/lib/ai/agents/cataloging-agent";
 import type { ServerEnvironment } from "@/lib/env/server";
 import type { ValidatedImage } from "@/lib/image/validation";
 
+import { excludeTerminalJobStatuses, isJobCancelled } from "./job-status";
 import type { ImportJobRow } from "./types";
+
+const NO_GARMENTS_MESSAGE = "No distinct garments were detected. Try a clearer or closer photo.";
 
 export async function persistAnalysisResults(
   admin: SupabaseClient,
@@ -14,6 +17,8 @@ export async function persistAnalysisResults(
   catalog: Awaited<ReturnType<typeof catalogGarments>>,
   candidates: readonly Record<string, unknown>[],
 ) {
+  if (await isJobCancelled(admin, job)) return null;
+
   if (candidates.length > 0) {
     const { error } = await admin
       .from("import_job_candidates")
@@ -21,7 +26,7 @@ export async function persistAnalysisResults(
     if (error) throw error;
   }
 
-  await admin
+  const query = admin
     .from("import_jobs")
     .update({
       status: candidates.length > 0 ? "review_crop" : "failed",
@@ -32,14 +37,11 @@ export async function persistAnalysisResults(
       original_file_size: normalized.bytes.byteLength,
       completed_at: candidates.length > 0 ? null : new Date().toISOString(),
       error_code: candidates.length > 0 ? null : "no_garments_detected",
-      error_message:
-        candidates.length > 0
-          ? null
-          : "No distinct garments were detected. Try a clearer or closer photo.",
+      error_message: candidates.length > 0 ? null : NO_GARMENTS_MESSAGE,
     })
     .eq("id", job.id)
-    .eq("user_id", job.user_id)
-    .not("status", "in", "(complete,cancelled)");
+    .eq("user_id", job.user_id);
+  await excludeTerminalJobStatuses(query);
 
   await admin.from("agent_runs").insert({
     user_id: job.user_id,
@@ -50,4 +52,6 @@ export async function persistAnalysisResults(
     model: environment.OPENAI_VISION_MODEL,
     usage: catalog.usage ?? {},
   });
+
+  return candidates.length;
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { excludeTerminalJobStatuses } from "./job-status";
 import type { ImportJobRow } from "./types";
 
 export async function resolveNextJobStatus(admin: SupabaseClient, job: ImportJobRow) {
@@ -11,10 +12,10 @@ export async function resolveNextJobStatus(admin: SupabaseClient, job: ImportJob
   const statuses = (remaining ?? []).map((candidate) => candidate.status as string);
   const nextStatus = statuses.some((status) => status === "extracting")
     ? "extracting"
-    : statuses.some((status) => status === "review_crop")
+    : statuses.some((status) => status === "review_crop" || status === "regenerating_crop")
       ? "review_crop"
       : "review_metadata";
-  const { data } = await admin
+  const query = admin
     .from("import_jobs")
     .update({
       status: nextStatus,
@@ -24,9 +25,15 @@ export async function resolveNextJobStatus(admin: SupabaseClient, job: ImportJob
       next_attempt_at: null,
     })
     .eq("id", job.id)
+    .eq("user_id", job.user_id);
+  const { data } = await excludeTerminalJobStatuses(query).select("id").maybeSingle();
+  if (data) return nextStatus;
+
+  const { data: current } = await admin
+    .from("import_jobs")
+    .select("status")
+    .eq("id", job.id)
     .eq("user_id", job.user_id)
-    .not("status", "in", "(complete,cancelled)")
-    .select("id")
     .maybeSingle();
-  return data ? nextStatus : "cancelled";
+  return current?.status ?? "cancelled";
 }

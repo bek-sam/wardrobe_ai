@@ -4,11 +4,13 @@ import { ApiError } from "@/lib/api/response";
 
 import { revertCropApprovalClaim } from "./revert-crop-approval-claim";
 
-// Atomically claims the review_crop -> extracting transition before any
-// quota is spent or real regeneration work happens, so two simultaneous
+// Atomically claims the review_crop -> regenerating_crop transition before
+// any quota is spent or real regeneration work happens, so two simultaneous
 // approve-crop requests can't both consume quota/do the image work and have
 // only one win at the end -- the loser gets 409 immediately here, quota
-// untouched.
+// untouched. regenerating_crop (rather than extracting) keeps the candidate
+// invisible to the background worker's extracting-only query until
+// finalizeCropApproval() has actually uploaded the regenerated crop.
 export async function claimCropApproval(
   admin: SupabaseClient,
   userId: string,
@@ -17,7 +19,7 @@ export async function claimCropApproval(
 ) {
   const { data: claimed, error } = await admin
     .from("import_job_candidates")
-    .update({ status: "extracting", crop_approved_at: new Date().toISOString() })
+    .update({ status: "regenerating_crop", crop_approved_at: new Date().toISOString() })
     .eq("id", candidateId)
     .eq("job_id", jobId)
     .eq("user_id", userId)

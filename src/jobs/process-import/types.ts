@@ -6,6 +6,7 @@ export type ImportJobRow = {
   original_image_path: string;
   input_metadata: { userHint?: string | null } | null;
   attempt_count: number;
+  locked_until: string | null;
 };
 
 export type ImportCandidateRow = {

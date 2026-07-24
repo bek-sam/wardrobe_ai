@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 
 import { canonicalize } from "./canonicalize";
-import type { AnalysisHashInput } from "./types";
+import { CURATOR_SIGNAL_FIELDS, type AnalysisHashInput } from "./types";
 
 export function computeAnalysisHash(input: AnalysisHashInput): string {
+  const signals = Object.fromEntries(CURATOR_SIGNAL_FIELDS.map(({ key }) => [key, input[key]]));
   const canonical = canonicalize({
     itemIds: [...input.itemIds].sort(),
     itemMetadataVersions: input.itemMetadataVersions,
@@ -11,15 +12,7 @@ export function computeAnalysisHash(input: AnalysisHashInput): string {
     styleKnowledgeVersion: input.styleKnowledgeVersion,
     curatorModel: input.curatorModel,
     curatorPromptVersion: input.curatorPromptVersion,
-    occasionCategory: input.occasionCategory,
-    totalScore: input.totalScore,
-    formalityLevel: input.formalityLevel,
-    warmthLevel: input.warmthLevel,
-    colorHarmony: input.colorHarmony,
-    layeringQuality: input.layeringQuality,
-    occasionFormality: input.occasionFormality,
-    preferenceMatch: input.preferenceMatch,
-    variety: input.variety,
+    ...signals,
   });
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }

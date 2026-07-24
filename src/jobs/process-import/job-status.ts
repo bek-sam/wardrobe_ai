@@ -14,3 +14,12 @@ export async function isJobCancelled(
     .maybeSingle();
   return data?.status === "cancelled";
 }
+
+// Shared guard for writes to import_jobs that must not clobber a job that
+// already reached a terminal state -- centralized so every call site stays
+// in sync if a third terminal status is ever added.
+export function excludeTerminalJobStatuses<
+  Q extends { not: (column: string, operator: string, value: string) => Q },
+>(query: Q): Q {
+  return query.not("status", "in", "(complete,cancelled)");
+}
