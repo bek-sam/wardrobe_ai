@@ -1,44 +1,5 @@
-export type PatternScale = "none" | "subtle" | "medium" | "bold";
-
-const BOLD_KEYWORDS = [
-  "animal print",
-  "leopard",
-  "zebra",
-  "camo",
-  "camouflage",
-  "graphic",
-  "tie-dye",
-  "tie dye",
-];
-const MEDIUM_KEYWORDS = [
-  "plaid",
-  "check",
-  "checked",
-  "floral",
-  "stripe",
-  "striped",
-  "houndstooth",
-  "argyle",
-  "paisley",
-];
-const SUBTLE_KEYWORDS = ["pinstripe", "herringbone", "micro", "textured", "heather", "melange"];
-
-function normalize(pattern: string) {
-  return pattern.trim().toLowerCase();
-}
-
-export function classifyPatternScale(pattern: string | null): PatternScale {
-  if (!pattern) return "none";
-  const normalized = normalize(pattern);
-  if (normalized === "solid" || normalized === "none" || normalized === "") return "none";
-  if (BOLD_KEYWORDS.some((keyword) => normalized.includes(keyword))) return "bold";
-  if (SUBTLE_KEYWORDS.some((keyword) => normalized.includes(keyword))) return "subtle";
-  if (MEDIUM_KEYWORDS.some((keyword) => normalized.includes(keyword))) return "medium";
-  // An unrecognized-but-non-solid pattern is treated as medium rather than
-  // assumed safe, since the curator should still weigh it against the rest
-  // of the outfit.
-  return "medium";
-}
+import { classifyPatternScale } from "./classify";
+import { normalize } from "./normalize";
 
 function shareColorFamily(patternA: string | null, patternB: string | null) {
   if (!patternA || !patternB) return false;
