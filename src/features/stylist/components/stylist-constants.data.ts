@@ -15,8 +15,10 @@ export const roles = new Set<OutfitItemRole>([
 export const quickPrompts = [
   "Dress me for work tomorrow",
   "A casual rainy-day look",
-  "What goes with my favorite layer?",
-  "Plan a dinner outfit",
+  "Plan my outfits for next week",
+  "Pack me for 3 days in Chicago",
+  "What have I not worn this year?",
+  "Do I own a blue blazer?",
 ];
 
 export const previewStatuses = new Set(["none", "queued", "generating", "ready", "failed"]);

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 
 import type { generateOutfitRequestSchema } from "@/features/stylist/schemas";
-import { runWardrobeOrchestrator } from "@/lib/ai/agents/orchestrator";
+import { runWardrobeOutfitRequest } from "@/lib/ai/agents/orchestrator";
 import { getServerEnvironment } from "@/lib/env/server";
 import { enforceAiUsageLimits } from "@/lib/usage/limits";
 
@@ -21,7 +21,7 @@ export async function handleGenerateOutfit(
     rollingLimit: environment.STYLIST_RATE_LIMIT_PER_MINUTE,
   });
 
-  const result = await runWardrobeOrchestrator({
+  const result = await runWardrobeOutfitRequest({
     userId,
     request: input.message,
     date: input.date,

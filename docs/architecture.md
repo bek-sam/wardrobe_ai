@@ -53,6 +53,8 @@ AI never silently writes the final item metadata. Confirmation merges only revie
 
 ## Data flow: styling
 
+Step 0 is routing. The stylist endpoint resolves the request's intent (`outfit_request`, `planning`, `packing`, `insight`, `item_question`) plus its deterministic slots — date window, trip destination, insight period, lookup terms — and dispatches accordingly: a wear-history question is answered from `lib/insights`, an ownership question from `lib/wardrobe-search`, a multi-day or trip request from the planner agent, and only an outfit request runs the steps below. Every route returns a `kind`-discriminated answer with a user-facing `answer` string, and each is recorded in `agent_runs`.
+
 1. Resolve the authenticated user, preferences, requested date/location, and candidate wardrobe rows.
 2. Convert forecast data into deterministic constraints.
 3. Remove archived, deleted, unavailable, laundry, and weather-incompatible items.

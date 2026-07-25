@@ -1,48 +1,16 @@
-import { generatedOutfitSchema } from "@/features/outfits/schemas";
-
+import { sanitizeNonOutfitAnswer } from "./answers";
 import { isObject } from "./history-primitives";
-import { publicPreview } from "./sanitize-public-preview";
-import { publicWeather } from "./sanitize-public-weather";
-import { intents, uuidPattern } from "./history-constants.data";
+import { sanitizeOutfitResult } from "./sanitize-outfit-result";
 
 /**
- * Reduces a stored orchestrator result to fields rendered by the product UI.
- * In particular, resolved database rows, coordinates, traces, and unknown
- * model output are never returned by the conversation-history endpoint.
+ * Single entry point for everything the stylist may return: an outfit, or one
+ * of the non-outfit answers (plan, packing list, insight, item lookup). Each
+ * kind is sanitized down to renderable fields; anything else becomes null.
  */
 export function sanitizeStylistStructuredResult(value: unknown) {
-  if (!isObject(value) || !isObject(value.outfit)) return null;
-  const outfit = value.outfit;
-  const parsedOutfit = generatedOutfitSchema.safeParse({
-    title: outfit.title,
-    items: outfit.items,
-    explanation: outfit.explanation,
-    warnings: outfit.warnings,
-    confidence: outfit.confidence,
-    missing_category: outfit.missing_category,
-    follow_up_question: outfit.follow_up_question,
-  });
-  if (!parsedOutfit.success) return null;
-
-  const intent =
-    typeof value.intent === "string" && intents.has(value.intent) ? value.intent : null;
-  const generationId =
-    typeof value.generationId === "string" && uuidPattern.test(value.generationId)
-      ? value.generationId
-      : null;
-  const excludedItemCount =
-    typeof value.excludedItemCount === "number" &&
-    Number.isInteger(value.excludedItemCount) &&
-    value.excludedItemCount >= 0
-      ? value.excludedItemCount
-      : 0;
-
-  return {
-    generationId,
-    intent,
-    outfit: parsedOutfit.data,
-    weather: publicWeather(value.weather),
-    excludedItemCount,
-    preview: publicPreview(value.preview),
-  };
+  if (!isObject(value)) return null;
+  if (typeof value.kind === "string" && value.kind !== "outfit") {
+    return sanitizeNonOutfitAnswer(value);
+  }
+  return sanitizeOutfitResult(value);
 }

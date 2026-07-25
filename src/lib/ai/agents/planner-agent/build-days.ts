@@ -1,14 +1,13 @@
-import type { PlannerDay } from "@/lib/ai/agents/planner-agent";
 import { getWardrobeCandidates } from "@/lib/ai/tools/get-wardrobe";
 import { getWeatherForStyling } from "@/lib/ai/tools/get-weather";
 import type { getPreferences } from "@/lib/ai/tools/get-preferences";
 import type { WardrobeItem } from "@/features/wardrobe/types";
 
-type DayInput = { date: string; location?: string | null; occasion?: string | null };
+import type { PlannerDay, PlannerDayInput } from "./types";
 
 export async function buildPlannerDays(
   userId: string,
-  days: readonly DayInput[],
+  days: readonly PlannerDayInput[],
   preferences: Awaited<ReturnType<typeof getPreferences>>,
 ) {
   const { profile, style, feedback } = preferences;

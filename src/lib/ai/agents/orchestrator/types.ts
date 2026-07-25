@@ -4,6 +4,8 @@ import type { getWeatherForStyling } from "@/lib/ai/tools/get-weather";
 import type { getServerEnvironment } from "@/lib/env/server";
 import type { OccasionContext } from "@/lib/recommendation";
 
+import type { WardrobeIntent } from "./intent";
+
 export type StylistOrchestratorInput = {
   userId: string;
   request: string;
@@ -16,6 +18,7 @@ export type StylistOrchestratorInput = {
 
 export type ComposeOutfitInput = {
   input: StylistOrchestratorInput;
+  intent: WardrobeIntent;
   startedAt: number;
   environment: ReturnType<typeof getServerEnvironment>;
   style: Awaited<ReturnType<typeof getPreferences>>["style"];
@@ -27,6 +30,7 @@ export type ComposeOutfitInput = {
 
 export type TryServeRetrievedOutfitInput = {
   input: StylistOrchestratorInput;
+  intent: WardrobeIntent;
   startedAt: number;
   environment: ReturnType<typeof getServerEnvironment>;
   profile: Awaited<ReturnType<typeof getPreferences>>["profile"];

@@ -4,9 +4,19 @@ Wardrobe AI uses a small orchestrated set of model calls. Database retrieval, au
 
 ## Wardrobe Orchestrator
 
-The orchestrator classifies the user-visible request, gathers authenticated preferences, weather, and owned candidates, then invokes the stylist only after deterministic filtering/scoring. It has no unrestricted database connection; every tool is scoped to the authenticated user.
+The orchestrator classifies the user-visible request into one of five intents and routes it to the capability that can actually answer it. It has no unrestricted database connection; every tool is scoped to the authenticated user.
 
-Its final result is rejected unless every selected item:
+| Intent           | Route                                                                      | Model calls |
+| ---------------- | -------------------------------------------------------------------------- | ----------- |
+| `outfit_request` | stored-candidate retrieval, then stylist composition                       | stylist (1) |
+| `planning`       | planner agent over the requested date window                               | planner (1) |
+| `packing`        | planner agent at the destination's forecast, collapsed into a packing list | planner (1) |
+| `insight`        | deterministic wear-history/composition analytics                           | none        |
+| `item_question`  | deterministic user-scoped wardrobe lookup                                  | none        |
+
+Classification is keyword-driven and free; only genuinely ambiguous text escalates to one small structured model call, and an unconfigured or failing call keeps the deterministic route. Date windows, trip destinations, insight periods, and lookup terms are always extracted deterministically. A "planning" request that resolves to a single day is treated as an outfit request rather than spending a planner call on one look; the generate-and-save endpoint always takes the outfit route.
+
+For the outfit route, the result is rejected unless every selected item:
 
 - was supplied in the candidate set;
 - belongs to the current user;

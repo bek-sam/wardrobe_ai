@@ -1,14 +1,12 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 import { buildCostPerWear } from "./build-cost-per-wear";
 import { buildFoundationGaps } from "./build-foundation-gaps";
 import { buildOverrepresented } from "./build-overrepresented";
 import { buildTallies } from "./build-tallies";
 import { sortedCounts } from "./counters";
-import { fetchInsightItems } from "./fetch-items";
+import type { InsightItem } from "./types";
 
-export async function handleGetInsights(supabase: SupabaseClient, userId: string) {
-  const items = await fetchInsightItems(supabase, userId);
+/** Pure wardrobe analytics over already-fetched, user-scoped rows. */
+export function buildWardrobeInsights(items: readonly InsightItem[]) {
   const { categories, colors, seasons, roles } = buildTallies(items);
 
   const byWear = [...items].sort(
@@ -31,3 +29,5 @@ export async function handleGetInsights(supabase: SupabaseClient, userId: string
     overrepresented: buildOverrepresented(categories, items.length),
   };
 }
+
+export type WardrobeInsights = ReturnType<typeof buildWardrobeInsights>;

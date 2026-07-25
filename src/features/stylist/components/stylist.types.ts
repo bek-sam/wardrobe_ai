@@ -52,6 +52,8 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   note?: string | null;
+  /** Summary lines for non-outfit answers (plan days, matches, highlights). */
+  details?: string[];
   time: string;
   structuredResult?: unknown;
 };
