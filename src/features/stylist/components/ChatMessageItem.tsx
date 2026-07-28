@@ -12,6 +12,13 @@ export function ChatMessageItem({ entry }: { entry: ChatMessage }) {
       ) : null}
       <div>
         <p>{entry.content}</p>
+        {entry.details?.length ? (
+          <ul className="chat-message__details">
+            {entry.details.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        ) : null}
         {entry.note ? <small>{entry.note}</small> : null}
         <time>{entry.time}</time>
       </div>

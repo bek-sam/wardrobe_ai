@@ -57,7 +57,7 @@ Expensive/long-running work (image import, product research, storage cleanup) is
 - `features/*`: per-feature types, Zod schemas, hooks, and components (auth, wardrobe, intake/import, research, stylist, planner, outfits, insights, today, settings, weather, uploads).
 - `lib/supabase`: browser / server-session / admin (service-role) Supabase clients — pick the least-privileged one that works.
 - `lib/auth`: authenticated viewer resolution.
-- `lib/image`: decoded-content validation, EXIF stripping, normalization, cropping, thumbnails.
+- `lib/image`: decoded-content validation, EXIF stripping, normalization, cropping.
 - `lib/recommendation`: hard filters, scoring weights, color/layer compatibility, exact-ID outfit validation, balanced planning — all deterministic, no model calls.
 - `lib/weather`: Open-Meteo geocoding/forecast + deterministic clothing constraints.
 - `lib/ai`: OpenAI client selection, strict Zod schemas, prompts, and the agents in `lib/ai/agents/*` (orchestrator, cataloging, stylist, planner, research).
@@ -69,7 +69,7 @@ Expensive/long-running work (image import, product research, storage cleanup) is
 
 Model calls are narrow and orchestrated, not free-roaming:
 
-- **Orchestrator** classifies the request, gathers preferences/weather/owned candidates, and only then calls the stylist. It has no unrestricted DB access. Its result is rejected unless every item is in the supplied candidate set, owned by the caller, active/undeleted/available, matches its declared role, and forms a valid foundation (exactly one dress, or exactly one top + one bottom).
+- **Orchestrator** (`lib/ai/agents/orchestrator`) classifies the request into one of five intents and dispatches to the matching handler in `orchestrator/handlers/*`: `outfit_request` → retrieval/stylist composition, `planning` → planner agent over the requested window, `packing` → planner agent at the destination + deterministic packing list, `insight` → deterministic analytics from `lib/insights`, `item_question` → deterministic lookup via `lib/wardrobe-search`. Classification and slot extraction (date window, destination, insight period, lookup terms) live in `orchestrator/intent/`: keyword rules first, one small structured model call only for low-confidence text, deterministic fallback on failure. It has no unrestricted DB access. An outfit result is rejected unless every item is in the supplied candidate set, owned by the caller, active/undeleted/available, matches its declared role, and forms a valid foundation (exactly one dress, or exactly one top + one bottom). Every handler returns a `kind`-discriminated answer (`WardrobeAnswer`) carrying a user-facing `answer` string; `runWardrobeOutfitRequest` is the outfit-only entry point used by `/api/outfits/generate`.
 - **Cataloging agent**: one Responses API call detects garments in an image, returns strict structured fields + per-field confidence. Never infers an exact brand from appearance alone.
 - **Image extraction service** (`lib/ai/image-service.ts`): model output + deterministic post-processing (chroma background removal, color-distance cleanup, framing checks, bounded regeneration, explicit user approval).
 - **Research agent**: only runs on request; uses user-confirmed clues + OpenAI web search; results are proposals with evidence and a confidence tier (`verified | likely | uncertain | not_found`) until explicitly accepted via RPC. Cannot overwrite user-confirmed fields.

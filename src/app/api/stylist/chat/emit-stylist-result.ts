@@ -34,7 +34,7 @@ export async function emitStylistResult(
       user_id: userId,
       conversation_id: conversationId,
       role: "assistant",
-      content: userVisibleResult.outfit.explanation,
+      content: userVisibleResult.answer,
       structured_result: userVisibleResult,
     });
     if (error) throw error;

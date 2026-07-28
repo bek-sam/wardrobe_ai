@@ -1,35 +1,43 @@
-import { resolveOccasionContextWithEscalation } from "@/lib/ai/agents/occasion-agent";
-import { getPreferences } from "@/lib/ai/tools/get-preferences";
-import { getServerEnvironment } from "@/lib/env/server";
-
-import { composeOutfit } from "./compose-outfit";
-import { resolveOrchestratorWeather } from "./resolve-weather";
-import { retrieveAlternatives } from "./retrieve-alternatives";
-import { tryServeRetrievedOutfit } from "./serve-retrieved";
+import type { OutfitAnswer, WardrobeAnswer } from "./answers.types";
+import { answerInsightRequest } from "./handlers/insight";
+import { answerItemQuestion } from "./handlers/item-question";
+import { answerOutfitRequest } from "./handlers/outfit";
+import { answerPackingRequest } from "./handlers/packing";
+import { answerPlanningRequest } from "./handlers/planning";
+import { resolveWardrobeIntent, resolveWardrobeIntentDeterministic } from "./intent";
 import type { StylistOrchestratorInput } from "./types";
 
-export async function runWardrobeOrchestrator(input: StylistOrchestratorInput) {
-  const startedAt = Date.now();
-  const environment = getServerEnvironment();
-  const { profile, style, feedback } = await getPreferences(input.userId);
-  const { weather, weatherWarning } = await resolveOrchestratorWeather(
-    input.date,
-    input.location,
-    profile,
-    style,
-  );
-  const occasionContext = await resolveOccasionContextWithEscalation(input.occasion, input.userId);
-  const context = { input, startedAt, environment, style, feedback, weather, weatherWarning };
-
-  // retrieveStoredOutfitCandidates ranks the safest pick first; the other
-  // (underused/expressive) alternatives are computed but not yet surfaced in
-  // the single-outfit response this endpoint returns today.
-  const alternatives = await retrieveAlternatives(input, occasionContext, weather, style, feedback);
-  const retrieved = alternatives[0];
-  if (retrieved) {
-    const retrievedResult = await tryServeRetrievedOutfit({ ...context, profile, retrieved });
-    if (retrievedResult) return retrievedResult;
+/**
+ * The classified intent is a route, not a label: each branch runs the tool
+ * that can actually answer that question. Only "outfit_request" composes an
+ * outfit, so an item lookup or a wear-history question never spends a stylist
+ * call trying to dress the user.
+ */
+export async function runWardrobeOrchestrator(
+  input: StylistOrchestratorInput,
+): Promise<WardrobeAnswer> {
+  const resolved = await resolveWardrobeIntent(input);
+  switch (resolved.intent) {
+    case "item_question":
+      return answerItemQuestion(input, resolved);
+    case "insight":
+      return answerInsightRequest(input, resolved);
+    case "packing":
+      return answerPackingRequest(input, resolved);
+    case "planning":
+      return answerPlanningRequest(input, resolved);
+    default:
+      return answerOutfitRequest(input, resolved);
   }
+}
 
-  return composeOutfit({ ...context, occasionContext });
+/**
+ * Outfit-only entry point for callers that must receive an outfit (the
+ * generate-and-save endpoint). Intent is still resolved deterministically so
+ * a date named in the message ("for tomorrow") is honoured, but no other
+ * route can be taken and no classification model call is made.
+ */
+export function runWardrobeOutfitRequest(input: StylistOrchestratorInput): Promise<OutfitAnswer> {
+  const resolved = resolveWardrobeIntentDeterministic(input.request, input.date);
+  return answerOutfitRequest(input, { ...resolved, intent: "outfit_request" });
 }

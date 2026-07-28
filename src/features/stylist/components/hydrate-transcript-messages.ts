@@ -1,3 +1,4 @@
+import { normalizeStylistAnswer } from "./normalize-stylist-answer";
 import { recommendationFromStoredMessage } from "./normalize-stylist-recommendation";
 import type { ChatMessage } from "./stylist.types";
 
@@ -7,12 +8,14 @@ export function hydrateTranscriptMessages(
 ): ChatMessage[] {
   return messages.map((entry) => {
     const storedRecommendation = recommendationFromStoredMessage(entry, conversationId);
-    return storedRecommendation
-      ? {
-          ...entry,
-          note: storedRecommendation.warnings[0] ?? storedRecommendation.followUpQuestion ?? null,
-        }
-      : entry;
+    if (storedRecommendation) {
+      return {
+        ...entry,
+        note: storedRecommendation.warnings[0] ?? storedRecommendation.followUpQuestion ?? null,
+      };
+    }
+    const storedAnswer = normalizeStylistAnswer(entry.structuredResult);
+    return storedAnswer ? { ...entry, details: storedAnswer.details } : entry;
   });
 }
 

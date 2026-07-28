@@ -2,20 +2,20 @@ import { after } from "next/server";
 
 import { recordFallbackOutfitCandidate } from "@/lib/ai/agents/retrieve-outfit-candidate";
 
-import { classifyWardrobeIntent } from "./classify-intent";
+import type { OutfitAnswer } from "./answers.types";
 import { generateCandidateOutfit } from "./generate-candidate-outfit";
 import { recordWardrobeOrchestratorRun } from "./record-agent-run";
 import { summarizeValidatedOutfit } from "./summarize-outfit";
 import type { ComposeOutfitInput } from "./types";
 
-export async function composeOutfit(composeInput: ComposeOutfitInput) {
-  const { input, startedAt, environment, weather } = composeInput;
+export async function composeOutfit(composeInput: ComposeOutfitInput): Promise<OutfitAnswer> {
+  const { input, intent, startedAt, environment, weather } = composeInput;
   const { candidates, agent, validation } = await generateCandidateOutfit(composeInput);
 
   const generationId = await recordWardrobeOrchestratorRun({
     userId: input.userId,
     inputSummary: {
-      intent: classifyWardrobeIntent(input.request),
+      intent,
       date: input.date,
       occasion: input.occasion,
       candidateCount: candidates.items.length,
@@ -41,8 +41,10 @@ export async function composeOutfit(composeInput: ComposeOutfitInput) {
   );
 
   return {
+    kind: "outfit",
     generationId,
-    intent: classifyWardrobeIntent(input.request),
+    intent,
+    answer: validation.outfit.explanation,
     outfit: validation.outfit,
     weather,
     excludedItemCount: candidates.excluded.length,

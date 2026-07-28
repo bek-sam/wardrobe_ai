@@ -1,14 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 
-import { runPlannerAgent } from "@/lib/ai/agents/planner-agent";
+import { buildPlannerDays, runPlannerAgent } from "@/lib/ai/agents/planner-agent";
 import { getPreferences } from "@/lib/ai/tools/get-preferences";
 import { getServerEnvironment } from "@/lib/env/server";
 import { enforceAiUsageLimits } from "@/lib/usage/limits";
 import type { generatePlanSchema } from "@/features/planner/schemas";
 
 import { buildPlanRows } from "./build-plan-rows";
-import { buildPlannerDays } from "./build-planner-days";
 
 type GeneratePlanInput = z.infer<typeof generatePlanSchema>;
 

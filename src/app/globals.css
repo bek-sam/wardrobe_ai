@@ -3232,6 +3232,19 @@ textarea:focus-visible {
   color: var(--muted);
   font-size: 8px;
 }
+.chat-message__details {
+  margin: 10px 0 0;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: disc;
+}
+.chat-message__details li {
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--muted);
+}
 .quick-prompts {
   display: flex;
   gap: 7px;
