@@ -55,6 +55,8 @@ AI never silently writes the final item metadata. Confirmation merges only revie
 
 Step 0 is routing. The stylist endpoint resolves the request's intent (`outfit_request`, `planning`, `packing`, `insight`, `item_question`) plus its deterministic slots — date window, trip destination, insight period, lookup terms — and dispatches accordingly: a wear-history question is answered from `lib/insights`, an ownership question from `lib/wardrobe-search`, a multi-day or trip request from the planner agent, and only an outfit request runs the steps below. Every route returns a `kind`-discriminated answer with a user-facing `answer` string, and each is recorded in `agent_runs`.
 
+Routing happens **before** any budget is charged, and exactly once per turn. `src/app/api/stylist/chat/resolve-chat-intent.ts` is the authenticated boundary: it resolves the intent, charges precisely that route's quota (see the [intent → quota matrix](agents.md#intent--quota-matrix)), and threads the resolved value through the SSE stream to the orchestrator, which never re-classifies. Deterministic routes therefore spend no daily AI generation unit, and planning/packing spend one planner unit rather than one planner plus one stylist. `runPlanForWindow` charges nothing — it is a shared pipeline, not a request boundary. Chat itself is gated on Supabase configuration, not on OpenAI, so the lookup and insight routes stay usable with every model variable unset while model-backed routes fail closed with a typed 503.
+
 1. Resolve the authenticated user, preferences, requested date/location, and candidate wardrobe rows.
 2. Convert forecast data into deterministic constraints.
 3. Remove archived, deleted, unavailable, laundry, and weather-incompatible items.

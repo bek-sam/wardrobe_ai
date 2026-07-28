@@ -90,3 +90,18 @@ Any service that can POST with a custom header on an interval (e.g. a hosted cro
 `GET /api/internal/wardrobe/health` (same authorization as the process route) returns aggregate queue depth — `queued_jobs`, `running_jobs`, `failed_jobs`, `failed_jobs_last_24h`, `oldest_queued_job_age_seconds` — and nothing else: no job IDs, user IDs, or wardrobe content. Wire it into an uptime/status dashboard and alert on `oldest_queued_job_age_seconds` exceeding a few multiples of your scheduling interval (indicates the scheduler stopped firing or the worker is failing every claim) or a persistently nonzero `failed_jobs_last_24h`.
 
 Import, research, and storage cleanup don't yet have an equivalent `/health` route; the same pattern (aggregate counts from their job tables, same authorization) extends directly if that's needed later.
+
+## Stylist chat rate limits
+
+The stylist chat charges each route only what it costs (full matrix in [Runtime AI and tools](agents.md#intent--quota-matrix)). Two rolling limits exist specifically so the zero-model routes stay protected without spending generation budget:
+
+| Variable                                      | Required | Purpose                                                                                                                                                                                               |
+| --------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WARDROBE_QUERY_RATE_LIMIT_PER_MINUTE`        | optional | Rolling ceiling for the deterministic `item_question` and `insight` routes, which spend no daily AI quota. Default: 20.                                                                               |
+| `INTENT_CLASSIFICATION_RATE_LIMIT_PER_MINUTE` | optional | Bounds how often ambiguous text may escalate to the classifier model. Routing is never billed as a generation, so this limit is what stops it being used as an unmetered model endpoint. Default: 10. |
+
+The existing `DAILY_STYLIST_LIMIT`, `DAILY_PLANNER_LIMIT`, `STYLIST_RATE_LIMIT_PER_MINUTE`, and `PLANNER_RATE_LIMIT_PER_MINUTE` continue to govern the model-backed routes. Deployments with `OPENAI_STYLIST_MODEL` or `OPENAI_PLANNER_MODEL` unset still serve wardrobe lookups and insights normally; the model-backed routes return a typed `503` naming what remains available.
+
+## Migrations
+
+Apply `supabase/migrations` in filename order with the Supabase CLI. This release adds one new file — `202607270001_save_recorded_chat_plans.sql` (the `generated_plan_saves` table and the `save_recorded_generated_week(uuid)` RPC). No historical migration is modified, and the new file is additive and re-runnable (`if not exists` / `create or replace`), so applying it to an existing database needs no downtime and no backfill.

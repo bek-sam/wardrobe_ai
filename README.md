@@ -77,21 +77,40 @@ OPENAI_PLANNER_MODEL=
 
 ## Commands
 
-| Command                                      | Purpose                               |
-| -------------------------------------------- | ------------------------------------- |
-| `npm run dev`                                | Start the Next.js development server  |
-| `npm run build`                              | Build the production app with webpack |
-| `npm run start`                              | Run the production build              |
-| `npm run lint`                               | Run ESLint                            |
-| `npm run typecheck`                          | Run strict TypeScript checks          |
-| `npm test`                                   | Run Vitest unit tests                 |
-| `npm run test:e2e`                           | Run Playwright end-to-end tests       |
-| `npm run format:check`                       | Verify Prettier formatting            |
-| `npm run check`                              | Run every local quality gate          |
-| `npm run legacy:dev`                         | Run the preserved Vite prototype      |
-| `npm run migrate:legacy -- --user-id <uuid>` | Dry-run local JSON migration          |
+| Command                                      | Purpose                                |
+| -------------------------------------------- | -------------------------------------- |
+| `npm run dev`                                | Start the Next.js development server   |
+| `npm run build`                              | Build the production app with webpack  |
+| `npm run start`                              | Run the production build               |
+| `npm run lint`                               | Run ESLint                             |
+| `npm run typecheck`                          | Run strict TypeScript checks           |
+| `npm test`                                   | Run Vitest unit tests                  |
+| `npm run test:integration`                   | Run integration tests (local Supabase) |
+| `npm run test:e2e`                           | Run Playwright end-to-end tests        |
+| `npm run format:check`                       | Verify Prettier formatting             |
+| `npm run check:quality`                      | Static checks, unit tests, both builds |
+| `npm run check`                              | `check:quality` + integration + E2E    |
+| `npm run legacy:dev`                         | Run the preserved Vite prototype       |
+| `npm run migrate:legacy -- --user-id <uuid>` | Dry-run local JSON migration           |
 
 Add `--apply` to the legacy migration only after reviewing its dry-run output and configuring Supabase. The migration is scoped to one explicit destination user and is safe to rerun.
+
+### Verification prerequisites
+
+`check:quality` runs anywhere: it is `format:check`, `lint`, `typecheck`, the unit suite, the Next build, and the legacy build. It needs no database and no OpenAI key.
+
+`check` additionally runs the integration and Playwright suites, which need real local infrastructure:
+
+```bash
+npx supabase start            # Docker (or Podman) must be installed and running
+npx supabase db reset         # applies supabase/migrations in order
+npx playwright install chromium
+npm run check
+```
+
+Without those three prerequisites `npm run check` cannot pass — `test:integration` fails with an explanatory error when Supabase is not running, and the authenticated stylist E2E specs skip themselves rather than pretending to pass. **`check:quality` being green is not evidence that the integration or E2E suites ran.** CI runs all three as separate jobs on every pull request.
+
+No OpenAI key is needed for any suite: the unit tests mock the model client, and the integration and authenticated E2E tests exercise the deterministic routes (wardrobe lookup, insights, recorded-plan saving), which make no model call.
 
 ## Background processing
 
@@ -121,7 +140,7 @@ The intended production topology is Vercel plus Supabase. Before a private beta:
 2. Configure Auth site/redirect URLs for the production domain.
 3. Set every server/client environment variable in the deployment environment.
 4. Configure worker scheduling and secrets.
-5. Run `npm run check` and authenticated two-user RLS integration tests.
+5. Run the full `npm run check` (quality gates **plus** the integration and authenticated E2E suites, which include two-user RLS assertions made through authenticated user clients).
 6. Verify account export and deletion against a disposable production-like user.
 
 ## Original prototype

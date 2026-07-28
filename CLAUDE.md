@@ -22,8 +22,11 @@ npx vitest run -t "test name"               # run tests matching a name
 npm run test:e2e           # Playwright e2e (spins up dev server itself)
 npm run format:check       # Prettier check
 npm run format              # Prettier write
-npm run check               # format:check + lint + typecheck + test + build + legacy:build (full local gate; mirrors CI)
+npm run check:quality      # format:check + lint + typecheck + test + build + legacy:build (no DB/browser needed)
+npm run check               # check:quality + test:integration + test:e2e (needs local Supabase + Playwright Chromium)
 ```
+
+`check:quality` passing is **not** evidence that the integration or E2E suites ran — only the full `npm run check` covers those, and it requires `npx supabase start`, `npx supabase db reset`, and `npx playwright install chromium` first. No suite needs an OpenAI key.
 
 Legacy prototype: `npm run legacy:dev`, `npm run legacy:build`, `npm run legacy:preview`.
 
@@ -37,7 +40,7 @@ npx supabase db reset      # applies supabase/migrations in order
 npm run test:integration   # Vitest against the real local instance (RLS, RPCs, concurrency); reads `supabase status` automatically
 ```
 
-CI (`.github/workflows/ci.yml`) runs format:check, lint, typecheck, unit tests, build, legacy:build, then separate integration (local Supabase) and Playwright jobs — mirror this before pushing.
+CI (`.github/workflows/ci.yml`) runs `check:quality`, then separate integration and authenticated-E2E jobs, both of which start and reset local Supabase. No OpenAI secret is used in CI — mirror this before pushing.
 
 ## Environment
 
@@ -63,13 +66,13 @@ Expensive/long-running work (image import, product research, storage cleanup) is
 - `lib/ai`: OpenAI client selection, strict Zod schemas, prompts, and the agents in `lib/ai/agents/*` (orchestrator, cataloging, stylist, planner, research).
 - `lib/compilation`: precomputed wardrobe/outfit-candidate generation consumed by the stylist path.
 - `jobs`: durable processors — `process-import.ts`, `research-item.ts`, `process-storage-deletions.ts`, `compile-wardrobe.ts`.
-- `supabase/migrations`: schema, RLS, private Storage policies, transactional RPCs, quota/usage controls, account lifecycle. Three files, applied strictly in order (`202607210001_core_wardrobe_imports.sql`, `...0002_outfits_agents_operations.sql`, `...0003_security_storage_account.sql`). Every table enables RLS in the migration that creates it, so a partially-applied schema stays deny-by-default.
+- `supabase/migrations`: schema, RLS, private Storage policies, transactional RPCs, quota/usage controls, account lifecycle. Applied strictly in filename order, starting with `202607210001_core_wardrobe_imports.sql`, `...0002_outfits_agents_operations.sql`, `...0003_security_storage_account.sql` and continuing through `202607270001_save_recorded_chat_plans.sql`. Every table enables RLS in the migration that creates it, so a partially-applied schema stays deny-by-default. Never edit a historical migration — add a new one.
 
 ### AI agents (`src/lib/ai/agents`)
 
 Model calls are narrow and orchestrated, not free-roaming:
 
-- **Orchestrator** (`lib/ai/agents/orchestrator`) classifies the request into one of five intents and dispatches to the matching handler in `orchestrator/handlers/*`: `outfit_request` → retrieval/stylist composition, `planning` → planner agent over the requested window, `packing` → planner agent at the destination + deterministic packing list, `insight` → deterministic analytics from `lib/insights`, `item_question` → deterministic lookup via `lib/wardrobe-search`. Classification and slot extraction (date window, destination, insight period, lookup terms) live in `orchestrator/intent/`: keyword rules first, one small structured model call only for low-confidence text, deterministic fallback on failure. It has no unrestricted DB access. An outfit result is rejected unless every item is in the supplied candidate set, owned by the caller, active/undeleted/available, matches its declared role, and forms a valid foundation (exactly one dress, or exactly one top + one bottom). Every handler returns a `kind`-discriminated answer (`WardrobeAnswer`) carrying a user-facing `answer` string; `runWardrobeOutfitRequest` is the outfit-only entry point used by `/api/outfits/generate`.
+- **Orchestrator** (`lib/ai/agents/orchestrator`) classifies the request into one of five intents and dispatches to the matching handler in `orchestrator/handlers/*`: `outfit_request` → retrieval/stylist composition, `planning` → planner agent over the requested window, `packing` → planner agent at the destination + deterministic packing list, `insight` → deterministic analytics from `lib/insights`, `item_question` → deterministic lookup via `lib/wardrobe-search`. Classification and slot extraction (date window, destination, insight period, lookup terms) live in `orchestrator/intent/`: keyword rules first, one small structured model call only for low-confidence text, deterministic fallback on failure. It has no unrestricted DB access. Intent is resolved **once**, at the authenticated chat boundary (`app/api/stylist/chat/resolve-chat-intent.ts`), which charges exactly that route's quota (`lib/usage/intent-quota`) and threads the resolved value through to the orchestrator — never classify or charge twice, and never charge inside `runPlanForWindow`. Deterministic routes (`item_question`, `insight`) spend no daily generation quota and work with every OpenAI variable unset; model-backed routes fail closed via `orchestrator/require-model.ts` with a typed 503. An outfit result is rejected unless every item is in the supplied candidate set, owned by the caller, active/undeleted/available, matches its declared role, and forms a valid foundation (exactly one dress, or exactly one top + one bottom). Every handler returns a `kind`-discriminated answer (`WardrobeAnswer`) carrying a user-facing `answer` string; `runWardrobeOutfitRequest` is the outfit-only entry point used by `/api/outfits/generate`.
 - **Cataloging agent**: one Responses API call detects garments in an image, returns strict structured fields + per-field confidence. Never infers an exact brand from appearance alone.
 - **Image extraction service** (`lib/ai/image-service.ts`): model output + deterministic post-processing (chroma background removal, color-distance cleanup, framing checks, bounded regeneration, explicit user approval).
 - **Research agent**: only runs on request; uses user-confirmed clues + OpenAI web search; results are proposals with evidence and a confidence tier (`verified | likely | uncertain | not_found`) until explicitly accepted via RPC. Cannot overwrite user-confirmed fields.
@@ -88,7 +91,7 @@ Resolve user/preferences/date/location/candidates → forecast → deterministic
 
 ## Code style
 
-**Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
+**Logic files must not exceed 100 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
 
 Folder conventions when a file grows past the limit:
 
