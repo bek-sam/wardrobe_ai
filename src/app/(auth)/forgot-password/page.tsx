@@ -1,8 +1,8 @@
 import { ArrowLeft, Envelope } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
 
+import { AuthConfigurationNote } from "@/components/ui/AuthConfigurationNote";
 import { AuthFeedback } from "@/components/ui/AuthFeedback";
-import { AuthIntegrationNote } from "@/components/ui/AuthIntegrationNote";
 import type { SearchParamValue } from "@/components/ui/search-param-value";
 import { isSupabaseConfigured } from "@/lib/env/client";
 
@@ -26,23 +26,24 @@ export default async function ForgotPasswordPage({
   return (
     <section className="auth-card auth-card--compact" aria-labelledby="reset-title">
       <span className="auth-card__icon">
-        <Envelope size={24} weight="light" />
+        <Envelope aria-hidden="true" size={24} weight="light" />
       </span>
       <div className="auth-card__intro">
         <p className="eyebrow">Account recovery</p>
         <h1 id="reset-title">Reset your password.</h1>
-        <p>Enter your email and the account service will send a secure reset link.</p>
+        <p>
+          Enter your email and we will send a secure link. The response is the same whether or not
+          an account exists, so nobody can use this page to discover who has one.
+        </p>
       </div>
       <AuthFeedback error={query.error} notice={query.notice} />
       <ForgotPasswordForm configured={configured} />
-      <AuthIntegrationNote
+      <AuthConfigurationNote
         configured={configured}
-        readyMessage="Password recovery is connected and sends a secure, time-limited email link."
-        previewMessage="Preview mode: configure Supabase to enable password recovery."
-        icon={false}
+        readyMessage="The link is single-use, expires in minutes, and signs out your other sessions once the password changes."
       />
       <Link className="auth-back" href="/login">
-        <ArrowLeft size={15} /> Back to login
+        <ArrowLeft aria-hidden="true" size={15} /> Back to login
       </Link>
     </section>
   );

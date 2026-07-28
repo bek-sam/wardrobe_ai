@@ -24,8 +24,19 @@ export function adminClient(): SupabaseClient {
 
 export type SeededUser = { id: string; email: string; password: string };
 
-/** A disposable, email-confirmed user that can log in through the real UI. */
-export async function createDisposableUser(admin: SupabaseClient): Promise<SeededUser> {
+/**
+ * A disposable, email-confirmed user that can log in through the real UI.
+ *
+ * The password is well past the 15-character minimum because a UUID is long,
+ * and acceptance of the current legal documents is recorded up front — a user
+ * created straight through the Admin API has no acceptance row, and the app
+ * would otherwise (correctly) divert them to the acceptance screen before any
+ * wardrobe page rendered.
+ */
+export async function createDisposableUser(
+  admin: SupabaseClient,
+  options: { acceptLegal?: boolean } = {},
+): Promise<SeededUser> {
   const email = `wardrobe-e2e-${randomUUID()}@example.com`;
   const password = `Test-${randomUUID()}`;
   const { data, error } = await admin.auth.admin.createUser({
@@ -34,7 +45,21 @@ export async function createDisposableUser(admin: SupabaseClient): Promise<Seede
     email_confirm: true,
   });
   if (error || !data.user) throw error ?? new Error("Failed to create the E2E user.");
+
+  if (options.acceptLegal !== false) await acceptCurrentLegalVersions(admin, data.user.id);
   return { id: data.user.id, email, password };
+}
+
+/** Records consent for the versions currently in force, as signup would. */
+export async function acceptCurrentLegalVersions(admin: SupabaseClient, userId: string) {
+  const { TERMS_VERSION, PRIVACY_VERSION } = await import("../../src/constants/legal");
+  const { error } = await admin.rpc("record_legal_acceptance", {
+    p_user_id: userId,
+    p_terms_version: TERMS_VERSION,
+    p_privacy_version: PRIVACY_VERSION,
+    p_source: "signup",
+  });
+  if (error) throw error;
 }
 
 export async function deleteDisposableUser(admin: SupabaseClient, userId: string) {

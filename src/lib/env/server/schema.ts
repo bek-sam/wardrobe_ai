@@ -9,6 +9,16 @@ const optionalUnboundedPositiveInteger = z.preprocess(
   emptyToUndefined,
   z.coerce.number().int().positive().optional(),
 );
+// Feature flags are opt-in: anything that is not an explicit truthy string
+// leaves the flag off, so a typo or an unset variable fails closed.
+const booleanFlag = z.preprocess(
+  (value) =>
+    typeof value === "string" ? ["true", "1", "yes", "on"].includes(value.trim()) : false,
+  z.boolean().default(false),
+);
+// Signing/HMAC secrets must be long enough that an offline guess is
+// impractical. `openssl rand -hex 32` produces a 64-character value.
+const optionalSecret = z.preprocess(emptyToUndefined, z.string().min(32).optional());
 
 export const serverEnvironmentSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.url().default("http://localhost:3000"),
@@ -59,6 +69,29 @@ export const serverEnvironmentSchema = z.object({
   PREVIEW_DAILY_LIMIT: optionalPositiveInteger(30),
   PREVIEW_MAX_QUEUED_PER_USER: optionalPositiveInteger(5),
   PREVIEW_FREQUENTLY_SUGGESTED_THRESHOLD: optionalPositiveInteger(3),
+
+  // ---------------------------------------------------------------------
+  // Authentication. Provider secrets (Google client secret, Turnstile secret,
+  // SMTP credentials) deliberately live in Supabase/Google/SMTP configuration
+  // and never in this application's environment. See docs/authentication.md.
+  // ---------------------------------------------------------------------
+  PUBLIC_SIGNUP_ENABLED: booleanFlag,
+  NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: booleanFlag,
+  NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED: booleanFlag,
+  NEXT_PUBLIC_CAPTCHA_ENABLED: booleanFlag,
+  // Site key only. The matching Turnstile *secret* belongs in Supabase's
+  // CAPTCHA configuration, which is what actually validates the token.
+  NEXT_PUBLIC_TURNSTILE_SITE_KEY: optionalString,
+  // HMAC key for one-time auth action challenges (password reset, deletion
+  // reauthentication). Generate with: openssl rand -hex 32
+  AUTH_ACTION_SECRET: optionalSecret,
+  // HMAC key that turns emails/IPs into opaque pre-auth rate-limit buckets so
+  // the limiter never stores a raw identifier. Generate with: openssl rand -hex 32
+  AUTH_RATE_LIMIT_HMAC_SECRET: optionalSecret,
+  // Name of the client-IP header the deployment's reverse proxy *overwrites*.
+  // Unset means "no trustworthy client IP", which downgrades IP buckets to a
+  // shared unknown-proxy bucket rather than trusting a spoofable header.
+  TRUSTED_CLIENT_IP_HEADER: optionalString,
 });
 
 export type ServerEnvironment = z.infer<typeof serverEnvironmentSchema>;

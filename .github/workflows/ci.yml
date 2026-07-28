@@ -12,10 +12,20 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Pinned rather than `latest`, so a CLI release cannot change what the
+  # migrations are applied by between two runs of the same commit.
+  SUPABASE_CLI_VERSION: 2.110.0
+  NODE_VERSION: 22.12.0
+
 # No OpenAI secret is used anywhere in this workflow. The unit suite mocks the
 # model client, and the integration and authenticated E2E jobs exercise the
-# deterministic routes (wardrobe lookup, insights, recorded-plan saving), which
-# call no model at all.
+# deterministic routes (wardrobe lookup, insights, recorded-plan saving, and
+# the whole of authentication), which call no model at all.
+#
+# No Google, SMTP, or Turnstile credential is used either: the OAuth boundary
+# is covered by contract tests that assert what we send to Supabase, and email
+# is captured by the local Mailpit that `supabase start` runs.
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -24,29 +34,47 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22.12.0
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       # format:check + lint + typecheck + unit tests + Next build + legacy build.
       - run: npm run check:quality
 
-  integration:
-    needs: quality
+  audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22.12.0
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # Production dependencies only: a dev-only advisory should not block a
+      # release, and this application ships no dev dependency to users.
+      # `continue-on-error` keeps a newly published advisory from blocking an
+      # unrelated change while still surfacing it on the run.
+      - name: Audit production dependencies
+        continue-on-error: true
+        run: npm audit --omit=dev --audit-level=high
+
+  integration:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
       - run: supabase start
-      # Applies supabase/migrations in order, including the new
-      # 202607270001_save_recorded_chat_plans.sql.
+      # Applies supabase/migrations in order, including the auth security
+      # foundations, MFA assurance enforcement, and deletion-state migrations.
       - run: supabase db reset
       - run: npm run test:integration
       - if: always()
@@ -55,23 +83,24 @@ jobs:
   e2e:
     needs: quality
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: 22.12.0
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
       - run: supabase start
       - run: supabase db reset
       - run: npx playwright install --with-deps chromium
       # playwright.config.ts reads `supabase status -o env` itself and passes
-      # the local URL/keys to the dev server it starts, so the authenticated
-      # specs run for real rather than skipping themselves.
+      # the local URL/keys plus the auth test secrets to the dev server it
+      # starts, so the authenticated and auth-flow specs run for real rather
+      # than skipping themselves. Email is read from the local Mailpit.
       - run: npm run test:e2e -- --project=chromium
         env:
           NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000

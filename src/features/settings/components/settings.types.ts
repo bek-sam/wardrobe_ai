@@ -56,6 +56,13 @@ export type DataOwnershipSectionProps = {
   onDeletePassword: (value: string) => void;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
+  /**
+   * Whether the account actually has a password identity. Drives which
+   * reauthentication the deletion form asks for — an "email claim" is not
+   * evidence of a password, and Google-only accounts have no password to type.
+   */
+  hasPassword: boolean;
+  onReauthenticate: () => void;
 };
 
 export type ProfileFormState = { firstName: string; displayName: string; locale: string };

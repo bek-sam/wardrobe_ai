@@ -2,9 +2,17 @@ import { NextResponse } from "next/server";
 
 import { AuthenticationError } from "@/lib/auth/viewer";
 
-import { ApiError, type ApiFailure } from "./api-error";
+import { ApiError, type ApiFailure, RateLimitError } from "./api-error";
 
 export function routeError(error: unknown) {
+  // Checked before ApiError, which it extends, so the Retry-After hint is not
+  // lost to the more general branch.
+  if (error instanceof RateLimitError) {
+    return NextResponse.json<ApiFailure>(
+      { error: { code: error.code, message: error.message } },
+      { status: 429, headers: { "Retry-After": String(error.retryAfterSeconds) } },
+    );
+  }
   if (error instanceof AuthenticationError) {
     return NextResponse.json<ApiFailure>(
       { error: { code: error.code, message: error.message } },

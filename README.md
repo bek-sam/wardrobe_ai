@@ -6,7 +6,12 @@ The original Vite prototype is still available through the `legacy:*` scripts wh
 
 ## What is implemented
 
-- Supabase signup, login, password recovery, server sessions, protected routes, and onboarding profiles.
+- Email/password signup with confirmation, Google OAuth (PKCE), and optional magic-link sign-in for existing accounts — each behind an explicit flag, and absent from the interface rather than disabled when off.
+- Complete password recovery that actually sets a new password, plus authenticated password change and adding a password to an OAuth-only account.
+- Optional TOTP two-factor authentication, enforced at the database and Storage layer rather than only by a redirect.
+- Scoped sign-out (this device / other devices / everywhere), versioned Terms and Privacy acceptance, and a Settings security area showing the real email, providers, and factors.
+- Pre-authentication rate limiting keyed by HMAC (no raw emails or IPs stored) and optional Cloudflare Turnstile.
+- Server sessions, protected routes, and onboarding profiles.
 - PostgreSQL migrations for wardrobe items, private image lineage, durable imports, research, outfits, plans, wear history, feedback, chat, agent traces, usage controls, export, and deletion.
 - Row Level Security and private Storage policies scoped to the authenticated user.
 - Manual wardrobe CRUD plus search, filters, favorites, availability, wear actions, and signed image URLs.
@@ -60,7 +65,17 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# Authentication. Generate each with: openssl rand -hex 32
+AUTH_ACTION_SECRET=
+AUTH_RATE_LIMIT_HMAC_SECRET=
+PUBLIC_SIGNUP_ENABLED=true
 ```
+
+Google, CAPTCHA, and SMTP **secrets** are deliberately not application
+variables — Supabase is what redeems an OAuth code, verifies a CAPTCHA token,
+and sends mail, so those belong in its configuration. See
+[Authentication](docs/authentication.md).
 
 AI routes additionally require:
 
@@ -128,6 +143,8 @@ Interactive routes can also process one owned import or research job, but produc
 - [Runtime agents and deterministic services](docs/agents.md)
 - [Data model](docs/data-model.md)
 - [Storage and RLS security](docs/storage-security.md)
+- [Authentication and account security](docs/authentication.md)
+- [Auth production checklist](docs/auth-production-checklist.md)
 - [Privacy](docs/privacy.md)
 
 The repository’s [`.agents/skills`](.agents/skills) are development-time automation instructions. They are separate from the authenticated runtime agents under `src/lib/ai/agents`.
@@ -137,11 +154,11 @@ The repository’s [`.agents/skills`](.agents/skills) are development-time autom
 The intended production topology is Vercel plus Supabase. Before a private beta:
 
 1. Apply all Supabase migrations in order.
-2. Configure Auth site/redirect URLs for the production domain.
+2. Work through the [auth production checklist](docs/auth-production-checklist.md) — Supabase URL configuration, email/password settings, sessions, custom SMTP, and any provider you enable. None of it happens by deploying this repository.
 3. Set every server/client environment variable in the deployment environment.
-4. Configure worker scheduling and secrets.
-5. Run the full `npm run check` (quality gates **plus** the integration and authenticated E2E suites, which include two-user RLS assertions made through authenticated user clients).
-6. Verify account export and deletion against a disposable production-like user.
+4. Configure worker scheduling and secrets, including the daily retention sweep.
+5. Run the full `npm run check` (quality gates **plus** the integration and authenticated E2E suites, which include two-user RLS assertions and the MFA-at-`aal1` denial tests made through authenticated user clients).
+6. Verify account export and deletion against a disposable production-like user, confirming the audit row reads `complete` only after the Storage objects are actually gone.
 
 ## Original prototype
 

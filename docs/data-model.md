@@ -14,6 +14,9 @@ The Supabase schema treats `profiles` as the ownership root for private applicat
 8. `202607210008_wardrobe_compilation_v2.sql` adds normalized `occasion_category`, atomic finalize/exposure/fallback RPCs, the manual-recompile RPC, and the service-role batch-claim RPC for a real background worker.
 9. `202607220001_curator_and_previews.sql` adds the wardrobe-change-event log, the curator analysis cache, the modeled-preview job queue, curator/preview state columns on `outfit_candidates`, modeled-preview consent columns on `profiles`, and a style-archetype column on `style_profiles`.
 10. `202607270001_save_recorded_chat_plans.sql` adds the `generated_plan_saves` mapping table and the `save_recorded_generated_week(uuid)` RPC that lets a stylist-chat planning answer be saved explicitly and idempotently.
+11. `202607280001_auth_security_foundations.sql` adds `legal_acceptances` (versioned Terms/Privacy consent), `auth_action_challenges` (one-time nonces behind password reset and deletion reauthentication), `auth_rate_limits` (HMAC-keyed pre-authentication buckets), and `auth_events` (coarse operational auth events), plus their service-role-only RPCs and a retention sweep.
+12. `202607280002_mfa_assurance_enforcement.sql` adds `mfa_requirement_satisfied()` and a **restrictive** `require_mfa_assurance` policy on every user-owned table and on the five private buckets, so a session that has not satisfied an enrolled second factor is denied at the database rather than only in the interface.
+13. `202607280003_account_deletion_truthful_states.sql` widens the deletion state machine (`requested`, `auth_deleted_storage_pending`, …), adds a dead-letter state and attempt budget to `storage_deletion_queue`, and adds the worker/health/retention RPCs that make `complete` mean the Storage objects are actually gone.
 
 Migrations are additive and use `if not exists`, replaceable functions, stable trigger names, and replaceable policies where practical. Every private table enables RLS in the migration that creates it; owner policies arrive in migration 003, so a partially applied schema remains deny-by-default. Apply the files with the Supabase CLI rather than pasting them out of order.
 
@@ -210,12 +213,19 @@ Hard-deleting image, import-job, or import-candidate rows enqueues unreferenced 
 - `account_deletion_manifest()` returns row counts and every owned Storage object.
 - `list_my_storage_objects()` returns the same paths as rows for batch removal.
 
-Deletion is a durable, resumable two-step workflow tracked in `account_deletion_requests` (see `202607210007_account_deletion_workflow.sql`), not one synchronous request:
+- `export_my_account_data()` is `security invoker`, so RLS scopes it to the caller. The route layer (`buildAccountExport`) adds safe account metadata and the legal acceptance history on top, and bumps `schema_version` to `2`.
 
-1. The route re-verifies the password (`supabase.auth.signInWithPassword`) before doing anything destructive.
-2. `start_account_deletion()` durably records the request and enqueues every owned Storage object into the existing `storage_deletion_queue` (idempotent: retrying re-enqueues the same objects rather than duplicating work), then `mark_account_deletion_auth_pending()` advances the row to `deleting_auth_user`.
-3. The route deletes the Auth user through the Admin API; the foreign-key cascade removes all relational data. Storage bytes are removed asynchronously afterward by the existing `claim_storage_deletion_tasks` worker, the same one that drains wardrobe-image/import cleanup.
-4. The route marks the request `complete`.
+Deletion is a durable, resumable workflow tracked in `account_deletion_requests` (see `202607210007_account_deletion_workflow.sql` and `202607280003_account_deletion_truthful_states.sql`), not one synchronous request:
+
+1. The route proves identity by whatever method the account actually has: current password for a password identity, a Google round trip for an OAuth-only account, or a one-time email link for a passwordless one — plus AAL2 when a factor is enrolled. Provider paths present a one-time `account_deletion` challenge minted by the reauthentication callback, which is consumed here so a replay authorizes nothing.
+2. `start_account_deletion()` durably records the request and enqueues every owned Storage object into the existing `storage_deletion_queue` (idempotent: retrying re-enqueues the same objects rather than duplicating work), then `mark_account_deletion_auth_pending()` advances the row to `deleting_auth_user`. Both RPCs carry an explicit `mfa_requirement_satisfied()` check, because security-definer functions run as their owner and therefore bypass the restrictive MFA policies.
+3. The route deletes the Auth user through the Admin API; the foreign-key cascade removes all relational data.
+4. `mark_account_deletion_auth_deleted()` chooses the honest next state: `complete` only when nothing was queued, otherwise `auth_deleted_storage_pending`.
+5. The `claim_storage_deletion_tasks` worker drains the queue. `complete_storage_deletion_task()` marks each object gone **and**, when it was the last outstanding one for that account, closes the parent request — in a single statement, so a worker that dies between two writes cannot leave an account marked fully deleted while files remain.
+
+`complete` therefore means all three of: the Auth identity is deleted, the relational cascade has run, and every account-deletion Storage object is removed or verified absent.
+
+`fail_storage_deletion_task()` retries with backoff up to a documented attempt budget (8, see `MAX_STORAGE_DELETION_ATTEMPTS`), then moves the row to `dead_letter` — outside the claim predicate, so it stops consuming worker capacity — and sets `attention_required` on the parent request. `storage_deletion_health()` exposes aggregate counts only, and `prune_completed_account_deletions(days)` removes finished records after 30 days while never touching a dead-lettered row or a deletion still needing attention.
 
 `account_deletion_requests` intentionally has no foreign key to `profiles` (like `storage_deletion_queue`), so the audit row survives the Auth-user cascade. A crash between steps 2 and 3 leaves a `deleting_auth_user` row that a retried `DELETE /api/account` call resumes instead of losing track of.
 

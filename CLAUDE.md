@@ -44,6 +44,13 @@ CI (`.github/workflows/ci.yml`) runs `check:quality`, then separate integration 
 
 ## Environment
 
+Authentication is documented in `docs/authentication.md`, with the external
+steps in `docs/auth-production-checklist.md`. Auth feature flags default to off
+and are enforced server-side (`src/lib/auth/flags.ts`); `AUTH_ACTION_SECRET` and
+`AUTH_RATE_LIMIT_HMAC_SECRET` are required for password recovery and pre-auth
+rate limiting respectively. Google, CAPTCHA, and SMTP **secrets** belong in
+Supabase configuration, never in this application's environment.
+
 Model IDs are intentionally not hard-coded anywhere in application source — they come only from env vars (`OPENAI_VISION_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_RESEARCH_MODEL`, `OPENAI_STYLIST_MODEL`, `OPENAI_PLANNER_MODEL`). AI and data-backed features must fail closed (never fall back to sample/fake data) when their required env vars are missing. See `.env.example` and `src/lib/env/{client,server}.ts`. `SUPABASE_SERVICE_ROLE_KEY`, OpenAI keys, and worker secrets are server-only — never prefix with `NEXT_PUBLIC_`.
 
 ## Architecture
@@ -59,14 +66,14 @@ Expensive/long-running work (image import, product research, storage cleanup) is
 - `app`: layouts/pages and Route Handlers (`app/api/**`). `app/api/_lib` holds shared route schema/response helpers.
 - `features/*`: per-feature types, Zod schemas, hooks, and components (auth, wardrobe, intake/import, research, stylist, planner, outfits, insights, today, settings, weather, uploads).
 - `lib/supabase`: browser / server-session / admin (service-role) Supabase clients — pick the least-privileged one that works.
-- `lib/auth`: authenticated viewer resolution.
+- `lib/auth`: authenticated viewer resolution (`viewer.ts`, local claim check) plus the account-security foundations — password/legal constants, feature flags, the single `safeReturnTo` sanitizer, canonical URL and callback resolution, provider-error mapping, live `getUser()` validation for sensitive actions (`live-user.ts`), AAL helpers (`mfa.ts`), identity normalization and last-identity protection, one-time signed action challenges (`action-challenges/`), pre-auth rate limiting (`rate-limit/`), and safe auth-event recording.
 - `lib/image`: decoded-content validation, EXIF stripping, normalization, cropping.
 - `lib/recommendation`: hard filters, scoring weights, color/layer compatibility, exact-ID outfit validation, balanced planning — all deterministic, no model calls.
 - `lib/weather`: Open-Meteo geocoding/forecast + deterministic clothing constraints.
 - `lib/ai`: OpenAI client selection, strict Zod schemas, prompts, and the agents in `lib/ai/agents/*` (orchestrator, cataloging, stylist, planner, research).
 - `lib/compilation`: precomputed wardrobe/outfit-candidate generation consumed by the stylist path.
 - `jobs`: durable processors — `process-import.ts`, `research-item.ts`, `process-storage-deletions.ts`, `compile-wardrobe.ts`.
-- `supabase/migrations`: schema, RLS, private Storage policies, transactional RPCs, quota/usage controls, account lifecycle. Applied strictly in filename order, starting with `202607210001_core_wardrobe_imports.sql`, `...0002_outfits_agents_operations.sql`, `...0003_security_storage_account.sql` and continuing through `202607270001_save_recorded_chat_plans.sql`. Every table enables RLS in the migration that creates it, so a partially-applied schema stays deny-by-default. Never edit a historical migration — add a new one.
+- `supabase/migrations`: schema, RLS, private Storage policies, transactional RPCs, quota/usage controls, account lifecycle. Applied strictly in filename order, starting with `202607210001_core_wardrobe_imports.sql`, `...0002_outfits_agents_operations.sql`, `...0003_security_storage_account.sql` and continuing through `202607280001_auth_security_foundations.sql` (legal acceptance, one-time auth action challenges, HMAC pre-auth rate limits, auth events), `202607280002_mfa_assurance_enforcement.sql` (restrictive `require_mfa_assurance` policies on every user-owned table and the private buckets), and `202607280003_account_deletion_truthful_states.sql` (honest deletion states, dead-lettering, health, retention). Every table enables RLS in the migration that creates it, so a partially-applied schema stays deny-by-default. Never edit a historical migration — add a new one.
 
 ### AI agents (`src/lib/ai/agents`)
 
@@ -91,7 +98,7 @@ Resolve user/preferences/date/location/candidates → forecast → deterministic
 
 ## Code style
 
-**Logic files must not exceed 100 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
+**Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
 
 Folder conventions when a file grows past the limit:
 
@@ -120,6 +127,7 @@ Folder conventions when a file grows past the limit:
 
 ## Testing conventions
 
-- Unit tests: Vitest + jsdom, files under `tests/unit/*.test.ts` plus a couple of top-level `tests/*.test.ts`. `tests/setup.ts` is the global setup; `tests/unit/fixtures.ts` holds shared fixtures. Path alias `@` → `src`.
+- Unit tests: Vitest + jsdom, files under `tests/unit/*.test.ts` plus a couple of top-level `tests/*.test.ts`. `tests/setup.ts` is the global setup; `tests/unit/fixtures.ts` holds shared fixtures, and `tests/unit/auth-test-env.ts` sets the auth environment that must be in place _before_ an auth route module is imported. Path alias `@` → `src`.
+- `tests/support/totp.ts` is a test-only RFC 6238 generator used by the MFA integration and E2E suites so factors are enrolled for real rather than faked.
 - E2E: Playwright, `tests/e2e/*.spec.ts`, chromium + mobile projects, dev server auto-started against `http://127.0.0.1:3000`.
 - The `.agents/skills/*` directory (`import-clothes`, `generate-outfits`) contains **development-time automation instructions for the legacy local-JSON workflow** — unrelated to the runtime agents in `src/lib/ai/agents`. Don't confuse the two when asked about "agents."

@@ -1,10 +1,6 @@
 import { useState } from "react";
 
-import {
-  confirmAccountDeletion,
-  deleteAccountErrorNotice,
-  deleteAccountRequest,
-} from "./delete-account";
+import { useDeleteAccount } from "./use-delete-account";
 import { useExportData } from "./use-export-data";
 import type { Notice, Profile } from "./settings.types";
 
@@ -17,21 +13,14 @@ export function useDataOwnership(
   const [deletePhrase, setDeletePhrase] = useState("");
   const [deletePassword, setDeletePassword] = useState("");
   const exportData = useExportData(setBusy, setNotice);
-
-  async function deleteAccount() {
-    if (!profile || deletePhrase !== "DELETE" || !deletePassword) return;
-    if (!confirmAccountDeletion()) return;
-    setBusy("delete");
-    setNotice(null);
-    try {
-      await deleteAccountRequest(profile, deletePassword);
-      window.location.assign("/");
-    } catch (error) {
-      setNotice(deleteAccountErrorNotice(error));
-      setDeletePassword("");
-      setBusy(null);
-    }
-  }
+  const deletion = useDeleteAccount({
+    profile,
+    deletePhrase,
+    deletePassword,
+    setDeletePassword,
+    setBusy,
+    setNotice,
+  });
 
   return {
     deleteOpen,
@@ -41,6 +30,6 @@ export function useDataOwnership(
     deletePassword,
     setDeletePassword,
     exportData,
-    deleteAccount,
+    ...deletion,
   };
 }

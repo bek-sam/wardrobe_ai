@@ -1,12 +1,10 @@
-import Link from "next/link";
-
 import { AuthFeedback } from "@/components/ui/AuthFeedback";
-import { AuthIntegrationNote } from "@/components/ui/AuthIntegrationNote";
 import { OAuthGoogleButton } from "@/components/ui/OAuthGoogleButton";
-import { sanitizeReturnTo } from "@/components/ui/sanitize-return-to";
 import type { SearchParamValue } from "@/components/ui/search-param-value";
+import { safeReturnTo } from "@/lib/auth/redirects";
 import { isSupabaseConfigured } from "@/lib/env/client";
 
+import { LoginFooterLinks } from "./LoginFooterLinks";
 import { LoginForm } from "./LoginForm";
 
 export const metadata = { title: "Log in" };
@@ -20,7 +18,7 @@ type LoginSearchParams = Promise<{
 export default async function LoginPage({ searchParams }: { searchParams: LoginSearchParams }) {
   const query = await searchParams;
   const configured = isSupabaseConfigured();
-  const returnTo = sanitizeReturnTo(query.returnTo);
+  const returnTo = safeReturnTo(query.returnTo);
 
   return (
     <section className="auth-card" aria-labelledby="login-title">
@@ -29,21 +27,13 @@ export default async function LoginPage({ searchParams }: { searchParams: LoginS
         <h1 id="login-title">Open your wardrobe.</h1>
         <p>Sign in to continue to your private closet and saved plans.</p>
       </div>
-      <OAuthGoogleButton describedBy="auth-integration-note" />
+      <OAuthGoogleButton returnTo={returnTo} />
       <AuthFeedback error={query.error} notice={query.notice} />
       <div className="auth-divider">
         <span>or use email</span>
       </div>
       <LoginForm configured={configured} returnTo={returnTo} />
-      <AuthIntegrationNote
-        configured={configured}
-        id="auth-integration-note"
-        readyMessage="Secure email sign-in is ready. Google sign-in has not been enabled yet."
-        previewMessage="Preview mode: configure Supabase to enable secure sign-in."
-      />
-      <p className="auth-card__switch">
-        New to Wardrobe AI? <Link href="/signup">Create an account</Link>
-      </p>
+      <LoginFooterLinks configured={configured} />
     </section>
   );
 }

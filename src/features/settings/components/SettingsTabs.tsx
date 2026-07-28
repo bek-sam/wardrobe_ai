@@ -1,4 +1,4 @@
-import { Bell, CoatHanger, LockKey, MapPin, User } from "@phosphor-icons/react";
+import { Bell, CoatHanger, LockKey, MapPin, ShieldCheck, User } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 
 export function SettingsTabs({
@@ -25,6 +25,7 @@ export function SettingsTabs({
       <button disabled title="Notification preferences are not available yet" type="button">
         <Bell size={18} /> Notifications
       </button>
+      {tab("settings-security", <ShieldCheck size={18} />, "Security & sign-in")}
       {tab("settings-privacy", <LockKey size={18} />, "Privacy & data")}
     </nav>
   );

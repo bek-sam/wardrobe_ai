@@ -6,19 +6,9 @@ import { DataOwnershipActions } from "./DataOwnershipActions";
 import { DeleteConfirmation } from "./DeleteConfirmation";
 import type { DataOwnershipSectionProps } from "./settings.types";
 
-export function DataOwnershipSection({
-  disabled,
-  busy,
-  onExport,
-  deleteOpen,
-  onOpenDelete,
-  deletePhrase,
-  onDeletePhrase,
-  deletePassword,
-  onDeletePassword,
-  onConfirmDelete,
-  onCancelDelete,
-}: DataOwnershipSectionProps) {
+export function DataOwnershipSection(props: DataOwnershipSectionProps) {
+  const { disabled, busy, onExport, deleteOpen, onOpenDelete } = props;
+
   return (
     <Card as="section" className="settings-section settings-section--data">
       <div className="settings-section__heading">
@@ -38,12 +28,14 @@ export function DataOwnershipSection({
       {deleteOpen ? (
         <DeleteConfirmation
           busy={busy === "delete"}
-          onCancel={onCancelDelete}
-          onConfirm={onConfirmDelete}
-          onPassword={onDeletePassword}
-          onPhrase={onDeletePhrase}
-          password={deletePassword}
-          phrase={deletePhrase}
+          hasPassword={props.hasPassword}
+          onCancel={props.onCancelDelete}
+          onConfirm={props.onConfirmDelete}
+          onPassword={props.onDeletePassword}
+          onPhrase={props.onDeletePhrase}
+          onReauthenticate={props.onReauthenticate}
+          password={props.deletePassword}
+          phrase={props.deletePhrase}
         />
       ) : null}
     </Card>

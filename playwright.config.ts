@@ -36,6 +36,18 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
       NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000",
+      // Signup is exercised end to end, so it must be on for this run.
+      PUBLIC_SIGNUP_ENABLED: "true",
+      // Obviously fake, fixed test keys. They only need to satisfy the 32-char
+      // minimum; nothing they sign leaves this machine, and no real secret
+      // belongs in a checked-in config file.
+      AUTH_ACTION_SECRET: "e2e-auth-action-secret-0000000000000000000000000000000000",
+      AUTH_RATE_LIMIT_HMAC_SECRET: "e2e-rate-limit-secret-0000000000000000000000000000000000",
+      // CAPTCHA and Google stay off: neither can be driven without a live
+      // third-party service, and their absence is itself asserted.
+      NEXT_PUBLIC_CAPTCHA_ENABLED: "false",
+      NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: "false",
+      NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED: "false",
     },
   },
 });
