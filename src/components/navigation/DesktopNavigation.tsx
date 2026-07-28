@@ -3,6 +3,7 @@
 import { BrandMark } from "@/components/ui/BrandMark";
 
 import { NavLink } from "./NavLink";
+import { SignOutForm } from "./SignOutForm";
 import { primaryItems, secondaryItems } from "./nav-items.data";
 
 export function DesktopNavigation() {
@@ -21,6 +22,7 @@ export function DesktopNavigation() {
         {secondaryItems.map((item) => (
           <NavLink key={item.href} {...item} />
         ))}
+        <SignOutForm />
       </nav>
       <div className="app-sidebar__privacy">
         <span aria-hidden="true" />

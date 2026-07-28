@@ -1,25 +1,39 @@
-import { NextResponse } from "next/server";
-import { forgotPasswordSchema, formDataObject } from "@/features/auth/schemas";
-import { rejectUntrustedOrigin } from "@/lib/api/origin";
-import { getServerEnvironment } from "@/lib/env/server";
+import { rateLimitRedirect, readAuthForm } from "@/app/api/auth/_lib/form-route";
+import { authRedirect } from "@/app/api/auth/_lib/redirect";
+import { forgotPasswordSchema } from "@/features/auth/schemas";
+import { authCallbackUrl } from "@/lib/auth/app-url";
+import { recordAuthEvent } from "@/lib/auth/audit";
+import { requireCaptchaToken } from "@/lib/auth/captcha";
+import { enforceAuthRateLimit } from "@/lib/auth/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 
+const GENERIC_NOTICE =
+  "If an account exists for that email, a password reset link is on its way. The link expires shortly.";
+
 export async function POST(request: Request) {
-  const rejected = rejectUntrustedOrigin(request);
-  if (rejected) return rejected;
-  const parsed = forgotPasswordSchema.safeParse(formDataObject(await request.formData()));
-  if (parsed.success) {
-    const environment = getServerEnvironment();
+  const form = await readAuthForm(request, forgotPasswordSchema, "/forgot-password");
+  if (!form.ok) return form.response;
+
+  try {
+    await enforceAuthRateLimit(request, "password_recovery", { email: form.data.email });
+    const captchaToken = requireCaptchaToken(form.data.captchaToken);
+
     const supabase = await createClient();
-    await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-      redirectTo: `${environment.NEXT_PUBLIC_APP_URL}/auth/callback?returnTo=/settings`,
+    // Sent to the dedicated recovery callback, never to Settings. That
+    // callback is the only place that mints a password-reset challenge, so an
+    // ordinary confirmation link can never be redeemed for one.
+    await supabase.auth.resetPasswordForEmail(form.data.email, {
+      redirectTo: authCallbackUrl("recovery"),
+      ...(captchaToken ? { captchaToken } : {}),
     });
+    await recordAuthEvent({ type: "recovery_requested", result: "success", provider: "email" });
+  } catch (error) {
+    const throttled = rateLimitRedirect(error, "/forgot-password");
+    if (throttled) return throttled;
+    console.error("forgot_password_failed", { code: "unhandled" });
   }
 
-  const target = new URL("/login", request.url);
-  target.searchParams.set(
-    "notice",
-    "If an account exists for that email, a password reset link is on its way.",
-  );
-  return NextResponse.redirect(target, { status: 303 });
+  // Same response on every path, including a rejected CAPTCHA-less submit, so
+  // response shape never reveals whether the address is registered.
+  return authRedirect("/check-email", { notice: GENERIC_NOTICE });
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { useAccountSecurity } from "./use-account-security";
 import { useDataOwnership } from "./use-data-ownership";
 import { usePrivacySection } from "./use-privacy-section";
 import { useSaveLocation } from "./use-save-location";
@@ -28,9 +29,14 @@ export function useSettingsManagerState(configured: boolean) {
     setNotice,
   );
   const dataOwnership = useDataOwnership(data.profile, setBusy, setNotice);
+  // Loaded once here and shared: both the security area and the deletion form
+  // need to know which sign-in methods exist, and two fetches could disagree.
+  const security = useAccountSecurity(configured);
 
   return {
     ...data,
+    configured,
+    security,
     retry,
     setRetry,
     activeSection,

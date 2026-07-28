@@ -1,30 +1,25 @@
-import { NextResponse } from "next/server";
-import { formDataObject, loginSchema, safeReturnTo } from "@/features/auth/schemas";
-import { rejectUntrustedOrigin } from "@/lib/api/origin";
-import { createClient } from "@/lib/supabase/server";
+import { rateLimitRedirect, readAuthForm } from "@/app/api/auth/_lib/form-route";
+import { authRedirect } from "@/app/api/auth/_lib/redirect";
+import { loginSchema } from "@/features/auth/schemas";
+import { ApiError } from "@/lib/api/response";
+import { authFailure } from "@/lib/auth/auth-error";
+
+import { handleLogin } from "./handler";
 
 export async function POST(request: Request) {
-  const rejected = rejectUntrustedOrigin(request);
-  if (rejected) return rejected;
-  const parsed = loginSchema.safeParse(formDataObject(await request.formData()));
-  if (!parsed.success) {
-    const target = new URL("/login", request.url);
-    target.searchParams.set("error", "Enter a valid email address and password.");
-    return NextResponse.redirect(target, { status: 303 });
-  }
+  const form = await readAuthForm(request, loginSchema, "/login");
+  if (!form.ok) return form.response;
 
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({
-    email: parsed.data.email,
-    password: parsed.data.password,
-  });
-  if (error) {
-    const target = new URL("/login", request.url);
-    target.searchParams.set("error", "The email or password is incorrect.");
-    return NextResponse.redirect(target, { status: 303 });
+  try {
+    return await handleLogin(request, form.data);
+  } catch (error) {
+    const throttled = rateLimitRedirect(error, "/login");
+    if (throttled) return throttled;
+    if (error instanceof ApiError && error.code === "captcha_required") {
+      return authRedirect("/login", { error: authFailure("captcha_required").message });
+    }
+    // Code only: an exception here can carry the submitted address.
+    console.error("login_route_failed", { code: "unhandled" });
+    return authRedirect("/login", { error: authFailure("unavailable").message });
   }
-
-  return NextResponse.redirect(new URL(safeReturnTo(parsed.data.returnTo), request.url), {
-    status: 303,
-  });
 }

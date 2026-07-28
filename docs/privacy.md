@@ -27,11 +27,48 @@ Originals, crops, cutouts, labels, and generated images retain explicit lineage.
 
 Private image or prompt content may be sent to configured AI providers when the user invokes an AI feature. Production privacy/terms copy must identify those processors, applicable retention settings, and the deployment operator’s contact details before public launch.
 
+## Authentication and account access
+
+Sign-in, two-factor authentication, sessions, and abuse controls are described in
+[`authentication.md`](./authentication.md). Two points matter for privacy:
+
+- A user with two-factor authentication enabled is protected **at the database**,
+  not only in the interface. A session that has not satisfied the second factor
+  cannot read or write any user-owned table or private Storage object, even if
+  it bypasses this application entirely.
+- Acceptance of the Terms and Privacy Policy is recorded against the exact
+  document versions presented, in `legal_acceptances`. That record deliberately
+  stores **no IP address and no user agent** — neither is needed to prove which
+  text was accepted, and storing them would turn a consent record into a
+  tracking record.
+
 ## Export and deletion
 
-The Settings/API surface supports a JSON export of user-owned relational data. Storage paths are included, not embedded image bytes.
+The Settings/API surface supports a JSON export of user-owned relational data.
+Storage paths are included, not embedded image bytes. The export also carries
+safe account metadata (user ID, confirmed email and its timestamp, account
+creation time, provider names, and whether MFA is enabled) and the full legal
+acceptance history. It never contains access or refresh tokens, provider
+tokens, TOTP secrets, raw identity-provider payloads, or password hashes.
 
-Account deletion first builds a manifest, removes private Storage objects through the Storage API, and then deletes the Auth user so relational cascades can complete. Durable cleanup rows survive long enough to retry orphan removal. A production deployment should require recent re-authentication and show a final confirmation before deletion.
+Account deletion proves identity by whatever method the account actually has —
+current password, a Google round trip, or a one-time email link — plus the
+second factor when one is enrolled. It then records a durable request, enqueues
+every owned Storage object for background removal, and deletes the Auth user so
+relational cascades can run.
+
+**Deletion is only reported complete when it is complete.** That means all
+three of: the Auth identity is deleted, the relational cascade has finished,
+and every queued Storage object has been removed or verified absent. Until the
+background worker has drained the queue the request sits in
+`auth_deleted_storage_pending`, and the confirmation page says so plainly:
+account access and records are gone immediately, private image files are
+erased over the following minutes.
+
+Objects that cannot be deleted after a bounded number of retries are moved to a
+dead-letter state and the parent deletion is flagged for operator attention
+rather than being quietly closed. Completed deletion records are pruned after
+30 days; anything still needing repair is never pruned.
 
 ## Logging
 

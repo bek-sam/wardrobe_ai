@@ -68,7 +68,13 @@ Deleting rows from `storage.objects` with raw SQL is not the supported way to re
 
 Hard-deleting image/import metadata automatically adds its object path to `storage_deletion_queue`. Queue rows intentionally survive profile/Auth deletion so no orphaned bytes become unreachable. Process that queue with a service-role worker; database triggers do not attempt to delete Storage bytes directly.
 
-Account deletion (`DELETE /api/account`) reuses this same queue instead of removing Storage objects synchronously in the request: it requires a fresh password confirmation, then `start_account_deletion()` enqueues every object from `account_deletion_manifest()` into `storage_deletion_queue` and durably records the request in `account_deletion_requests` (also FK-free, for the same reason) before the route deletes the Auth user through the Admin API. A crash between enqueueing and Auth deletion is resumable: retrying the request finds the existing `deleting_auth_user` row instead of starting over or losing track of the attempt.
+Account deletion (`DELETE /api/account`) reuses this same queue instead of removing Storage objects synchronously in the request: it proves identity by whatever method the account has (current password, a Google round trip, or a one-time email link — plus AAL2 when a factor is enrolled), then `start_account_deletion()` enqueues every object from `account_deletion_manifest()` into `storage_deletion_queue` and durably records the request in `account_deletion_requests` (also FK-free, for the same reason) before the route deletes the Auth user through the Admin API. A crash between enqueueing and Auth deletion is resumable: retrying the request finds the existing `deleting_auth_user` row instead of starting over or losing track of the attempt.
+
+The request is **not** marked complete at that point. `mark_account_deletion_auth_deleted()` moves it to `auth_deleted_storage_pending` whenever anything is still queued, and only `complete_storage_deletion_task()` — draining the last outstanding object — closes it. Objects that exhaust their attempt budget move to `dead_letter` and flag the parent with `attention_required` instead of being quietly dropped. Monitor `GET /api/internal/storage/health`, which returns aggregate counts only: no user IDs, bucket names, object paths, or error strings.
+
+## Second-factor enforcement on Storage
+
+`storage.objects` carries a restrictive `wardrobe_require_mfa_assurance` policy scoped to the five private buckets (`202607280002_mfa_assurance_enforcement.sql`). A session belonging to an account with a verified MFA factor, but which has not itself reached `aal2`, cannot list, read, upload, or delete under its own prefix — including by calling the Storage API directly with a valid access token. Accounts with no verified factor are unaffected and continue to work at `aal1`. The predicate short-circuits to true for any other bucket, so the restriction cannot spill outside these five.
 
 ## Required isolation tests
 
@@ -80,7 +86,8 @@ Use two Auth users and verify at minimum:
 - Anonymous requests cannot access any wardrobe table or bucket.
 - Mark-worn retries with the same idempotency key increment wear counts once.
 - Concurrent rate-limit requests cannot exceed the configured budget.
-- Auth user deletion removes all relational rows; the pre-deletion Storage manifest is empty after Storage cleanup.
+- Auth user deletion removes all relational rows; the pre-deletion Storage manifest is empty after Storage cleanup, and the audit row reads `complete` only once it is.
+- An MFA-enrolled account holding an `aal1` token cannot read or mutate its own rows, nor list or upload to its own Storage prefix; the same account at `aal2` can. See `tests/integration/mfa-assurance-rls.test.ts`.
 
 ## References
 

@@ -255,13 +255,30 @@ export const planListQuerySchema = z
   );
 
 export const accountDeletionSchema = z
-  .object({ confirmation: z.string().uuid(), password: z.string().min(1).max(200) })
+  .object({
+    confirmation: z.string().uuid(),
+    // Empty for Google-only and passwordless accounts, which reauthenticate
+    // through a provider round trip and present a one-time challenge instead.
+    password: z.string().max(200).default(""),
+  })
   .strict();
 
+/**
+ * `auth_deleted_storage_pending` is the state that makes the audit record
+ * honest: the identity is gone and the relational cascade has run, but private
+ * objects are still being removed. `complete` now means all three finished.
+ */
 export const accountDeletionRequestSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().uuid(),
-  status: z.enum(["storage_deletion_queued", "deleting_auth_user", "complete", "failed"]),
+  status: z.enum([
+    "requested",
+    "storage_deletion_queued",
+    "deleting_auth_user",
+    "auth_deleted_storage_pending",
+    "complete",
+    "failed",
+  ]),
   storage_objects_total: z.number().nonnegative(),
 });
 

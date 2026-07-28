@@ -12,3 +12,16 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
+
+/**
+ * A throttled request. The message and code are identical for every caller and
+ * every bucket: revealing *which* limit was hit, or how much budget is left,
+ * would tell an attacker whether an address is registered and let them pace
+ * requests to stay just under the threshold.
+ */
+export class RateLimitError extends ApiError {
+  constructor(readonly retryAfterSeconds: number) {
+    super(429, "rate_limited", "Too many attempts. Wait a few minutes and try again.");
+    this.name = "RateLimitError";
+  }
+}

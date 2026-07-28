@@ -1,5 +1,6 @@
-import { Button } from "@/components/ui/Button";
+import { SubmitButton } from "@/components/ui/SubmitButton";
 import { TextField } from "@/components/ui/TextField";
+import { TurnstileField } from "@/components/ui/TurnstileField";
 
 export function ForgotPasswordForm({ configured }: { configured: boolean }) {
   return (
@@ -13,9 +14,10 @@ export function ForgotPasswordForm({ configured }: { configured: boolean }) {
         required
         type="email"
       />
-      <Button disabled={!configured} fullWidth type="submit">
+      <TurnstileField action="password-recovery" />
+      <SubmitButton disabled={!configured} pendingLabel="Sending the link…">
         Send reset link
-      </Button>
+      </SubmitButton>
     </form>
   );
 }
