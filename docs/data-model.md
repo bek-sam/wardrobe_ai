@@ -13,6 +13,7 @@ The Supabase schema treats `profiles` as the ownership root for private applicat
 7. `202607210007_account_deletion_workflow.sql` adds the durable, resumable account-deletion request table and RPCs.
 8. `202607210008_wardrobe_compilation_v2.sql` adds normalized `occasion_category`, atomic finalize/exposure/fallback RPCs, the manual-recompile RPC, and the service-role batch-claim RPC for a real background worker.
 9. `202607220001_curator_and_previews.sql` adds the wardrobe-change-event log, the curator analysis cache, the modeled-preview job queue, curator/preview state columns on `outfit_candidates`, modeled-preview consent columns on `profiles`, and a style-archetype column on `style_profiles`.
+10. `202607270001_save_recorded_chat_plans.sql` adds the `generated_plan_saves` mapping table and the `save_recorded_generated_week(uuid)` RPC that lets a stylist-chat planning answer be saved explicitly and idempotently.
 
 Migrations are additive and use `if not exists`, replaceable functions, stable trigger names, and replaceable policies where practical. Every private table enables RLS in the migration that creates it; owner policies arrive in migration 003, so a partially applied schema remains deny-by-default. Apply the files with the Supabase CLI rather than pasting them out of order.
 
@@ -39,7 +40,8 @@ auth.users
     ├── conversations
     │   └── messages
     ├── agent_runs
-    │   └── generated_outfit_saves ── outfits
+    │   ├── generated_outfit_saves ── outfits
+    │   └── generated_plan_saves ── outfit_plans, outfits
     ├── api_idempotency_keys
     ├── feature_usage_counters
     └── rate_limit_events
@@ -131,6 +133,20 @@ Authenticated sessions have `SELECT` only on `import_jobs`, `import_job_candidat
 
 `save_generated_week(p_plans)` validates one to seven unique dated plan payloads and saves the entire requested week in one transaction. If any day fails ownership, availability, role, or shape validation, no day from that batch is committed.
 
+`save_recorded_generated_week(p_generation_id)` is the chat-plan equivalent of `save_recorded_generated_outfit`, added in `202607270001_save_recorded_chat_plans.sql`. The browser supplies **only** a generation ID; the plan days are replayed from the safe representation the server recorded in `agent_runs.output_summary.plans` (date, occasion, published weather subset, title, explanation, confidence, and owned item IDs with resolved roles and sort order — no prompts, reasoning, secrets, profile data, wardrobe rows, or private location fields). The RPC:
+
+- requires `auth.uid()` and a non-null generation ID;
+- takes a transaction advisory lock on user + generation, so concurrent saves serialize;
+- returns the previously created plan/outfit IDs when the generation was already saved, making retries and double-clicks idempotent;
+- loads only a **completed**, caller-owned `wardrobe_orchestrator` run, so a cross-user or stale generation ID is simply not found;
+- requires `planning` intent — a packing run is rejected, and packing records no saveable representation in the first place;
+- requires a well-formed one-to-seven-day plans array;
+- delegates the write to `save_generated_week`, so every existing ownership, activity, availability, role, and foundation check still applies and any failing day rolls the whole week back;
+- records each resulting plan/outfit in `generated_plan_saves`; and
+- flips matching `messages.structured_result.saved` to `true` so a reloaded conversation shows the plan as saved instead of re-offering the action.
+
+`generated_plan_saves` is owner-select only under RLS. There is no authenticated insert, update, or delete policy, so the security-definer RPC (granted to `authenticated` only) is the sole write path. Composite foreign keys `(plan_id, user_id)` and `(outfit_id, user_id)` prevent a service-role bug from attaching one user's plan or outfit to another user's save row, and unique constraints on `plan_id`/`outfit_id` keep one saved plan from being claimed twice. `POST /api/plans/generated` is the only endpoint that calls it.
+
 `swap_outfit_item(p_outfit_id, p_remove_item_id, p_replacement_item_id)` serializes changes to the selected outfit, verifies ownership and availability, enforces the same resolved role as the removed item, and preserves sort order in one transaction.
 
 `create_user_outfit(p_name, p_occasion, p_season_tags, p_weather_context, p_explanation, p_confidence, p_favorite, p_items)` atomically validates and saves a one-to-five-item user-built outfit. It requires exactly one dress or exactly one top plus one bottom, allows one of each optional role, and returns the outfit JSON with its `outfit_items` array.
@@ -175,6 +191,8 @@ The modeled-preview pipeline is a separate claim-queue, `outfit_preview_jobs`, m
 - `fail_api_idempotency_key(...)`
 
 `rate_limit_events` implements a rolling per-user feature bucket. Call `consume_rate_limit(bucket, limit, window, cost)` before expensive AI operations. An advisory transaction lock prevents concurrent requests from overspending a bucket.
+
+The stylist chat consumes these two primitives according to a fixed route → budget matrix (see [Runtime AI and tools](agents.md#intent--quota-matrix)): the deterministic `item_question` and `insight` routes take a `wardrobe_query` rolling bucket and **no** daily unit; `outfit_request` takes one `stylist_generation` daily unit; `planning` and `packing` each take one `planner_generation` daily unit and never touch the stylist budget; and escalating ambiguous text to the classifier takes an `intent_classification` rolling bucket with no daily unit. The matrix is applied once, at the authenticated request boundary.
 
 `feature_usage_counters` enforces longer daily or monthly feature budgets on fixed UTC boundaries, so changing a style/weather timezone cannot mint another quota. `check_and_increment_usage(feature, limit)` atomically consumes one daily unit; `check_and_increment_usage_window(feature, limit, period, increment)` supports `day` and `month` counters. Import and research callers cannot choose their own limits: `feature_limits` owns the `image_import`, `item_research`, `outfit_curator_calls`, and `outfit_preview_generation` daily budgets and is inaccessible to authenticated clients. `service_check_and_increment_usage_window(...)` is the service-role-callable twin used by the compilation and preview workers, which run with no `auth.uid()` session.
 

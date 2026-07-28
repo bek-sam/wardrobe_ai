@@ -1,8 +1,13 @@
-import { ApiError } from "@/lib/api/response";
-
-import { runLimit } from "./run-limit";
+import { enforceDailyLimit } from "./daily";
+import { enforceRollingLimit } from "./rolling";
 import type { UsageClient } from "./types";
 
+/**
+ * Combined rolling + daily enforcement, kept as the single call every ordinary
+ * AI endpoint (import, research, preview, planner, stylist) already uses. The
+ * two halves are exported separately for callers that must charge only one of
+ * them -- see lib/usage/intent-quota for the stylist chat matrix.
+ */
 export async function enforceAiUsageLimits(
   client: UsageClient,
   options: {
@@ -13,39 +18,14 @@ export async function enforceAiUsageLimits(
     rollingWindow?: string;
   },
 ) {
-  const rolling = await runLimit(client, "consume_rate_limit", {
-    p_bucket: options.rollingBucket,
-    p_limit: options.rollingLimit,
-    p_window: options.rollingWindow ?? "1 minute",
-    p_cost: 1,
+  const rolling = await enforceRollingLimit(client, {
+    bucket: options.rollingBucket,
+    limit: options.rollingLimit,
+    window: options.rollingWindow,
   });
-  if (!rolling.allowed) {
-    throw new ApiError(
-      429,
-      "rate_limit_reached",
-      "Please wait before trying this AI feature again.",
-      {
-        remaining: rolling.remaining,
-        resetAt: rolling.reset_at ?? null,
-      },
-    );
-  }
-
-  const daily = await runLimit(client, "check_and_increment_usage", {
-    p_feature: options.feature,
-    p_limit: options.dailyLimit,
+  const daily = await enforceDailyLimit(client, {
+    feature: options.feature,
+    limit: options.dailyLimit,
   });
-  if (!daily.allowed) {
-    throw new ApiError(
-      429,
-      "daily_limit_reached",
-      "The daily limit for this AI feature is reached.",
-      {
-        remaining: daily.remaining,
-        resetAt: daily.reset_at ?? null,
-      },
-    );
-  }
-
   return { rolling, daily };
 }

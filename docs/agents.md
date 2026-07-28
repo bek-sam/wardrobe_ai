@@ -16,6 +16,35 @@ The orchestrator classifies the user-visible request into one of five intents an
 
 Classification is keyword-driven and free; only genuinely ambiguous text escalates to one small structured model call, and an unconfigured or failing call keeps the deterministic route. Date windows, trip destinations, insight periods, and lookup terms are always extracted deterministically. A "planning" request that resolves to a single day is treated as an outfit request rather than spending a planner call on one look; the generate-and-save endpoint always takes the outfit route.
 
+Trip-destination extraction is case-insensitive: `pack me for chicago` and `Pack me for Chicago` resolve identically, and the casing the user wrote is preserved rather than respelled. It strips leading durations (`packing for 3 days in new york` → `new york`), trailing dates and weekday clauses, and punctuation, while keeping place-name connectors (`rio de janeiro`, `The Hague`, `stratford upon avon`). Weekdays, seasons, weather words, and generic places (`work`, `home`, `office`) are never treated as destinations. The extractor makes no model call and no geocoder lookup.
+
+### Intent → quota matrix
+
+Intent is resolved **once**, at the authenticated chat boundary, before any budget is charged; the resolved route is then threaded through to the orchestrator so a turn is never classified twice. Each route pays exactly its own cost:
+
+| Intent                  | Rolling bucket          | Daily generation unit    |
+| ----------------------- | ----------------------- | ------------------------ |
+| `item_question`         | `wardrobe_query`        | none                     |
+| `insight`               | `wardrobe_query`        | none                     |
+| `outfit_request`        | `stylist_generation`    | 1 × `stylist_generation` |
+| `planning`              | `planner_generation`    | 1 × `planner_generation` |
+| `packing`               | `planner_generation`    | 1 × `planner_generation` |
+| _classifier escalation_ | `intent_classification` | none                     |
+
+The deterministic routes answer from the user's own rows and call no model, so they spend no daily AI budget — only a rolling abuse limit. Planning and packing both run the planner agent and therefore never touch the stylist budget. Escalating ambiguous text to the classifier is a routing cost, not a generation: it takes its own rolling limit (so routing cannot be used as an unmetered model endpoint) and increments no daily counter. Quota is charged only at the request boundary, never inside the shared planner pipeline, so a route that fans out internally cannot double-bill.
+
+The mapping lives in one pure module (`src/lib/usage/intent-quota/policy.data.ts`) and is asserted directly in unit tests, so handler changes cannot silently re-price a route. `/api/outfits/generate` remains outfit-only on the stylist budget, and `/api/plans/generate` remains planner-only on the planner budget.
+
+### Running without OpenAI
+
+Chat is gated on the account, not on a model. With every OpenAI variable unset:
+
+- `item_question` and `insight` work normally — they read the user's own rows.
+- `outfit_request` returns a typed `503 stylist_model_unavailable`.
+- `planning` and `packing` return a typed `503 planner_model_unavailable`.
+
+Both errors name the routes that still work rather than presenting the stylist as broken, and no route ever fabricates a result when its model is missing. The UI reflects the same capability split; the server enforces it independently.
+
 For the outfit route, the result is rejected unless every selected item:
 
 - was supplied in the candidate set;
@@ -58,6 +87,17 @@ The model is responsible for coherent style reasoning and explanation. Hard owne
 ## Planner Agent
 
 The planner creates one unique look per requested date from each day’s eligible IDs. It minimizes needless repeats, respects laundry/availability and forecasts, and may reuse versatile layers. Every returned date, ID, foundation, and combination is validated before save.
+
+### Explicit chat-plan saving
+
+Chat never auto-saves a plan. A planning answer arrives with `saved: false` and an explicit **Save plan** action; the answer copy says the plan was not saved automatically and points at that action.
+
+- Only `kind: "plan"` / `intent: "planning"` answers are saveable. Packing lists stay advisory in this iteration and deliberately record nothing the save RPC could act on — no save action appears for packing, insights, item questions, or outfits.
+- The browser sends **only** a `generationId` to `POST /api/plans/generated`. It never submits plan days or item IDs, so a client cannot invent a plan or smuggle in items it does not own.
+- The days are replayed from the safe representation the server recorded in `agent_runs.output_summary.plans`: date, occasion, the already-published weather subset, title, explanation, confidence, and owned item IDs with resolved roles and sort order. No prompts, reasoning, secrets, profile data, wardrobe rows, coordinates, or private location fields are stored there.
+- The write goes through `save_recorded_generated_week` → `save_generated_week` → `save_generated_plan` → `save_generated_outfit`, so every existing ownership, activity, availability, role, and foundation check still applies. If any day fails, the whole week rolls back and nothing is created.
+- Saving is idempotent: a transaction advisory lock keyed on user + generation serialises concurrent clicks, and an already-saved generation returns the plan/outfit IDs it created the first time instead of duplicating a week.
+- On success the RPC flips the stored assistant message's `structured_result.saved` to `true`, so reloading the conversation shows the plan as saved rather than re-offering the action.
 
 ## Model and trace policy
 

@@ -2,11 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { z } from "zod";
 
 import type { stylistRequestSchema } from "@/features/stylist/schemas";
-import { getServerEnvironment } from "@/lib/env/server";
-import { enforceAiUsageLimits } from "@/lib/usage/limits";
 
 import { buildResponseStream } from "./build-response-stream";
 import { ensureConversation } from "./ensure-conversation";
+import { resolveChatIntentWithQuota } from "./resolve-chat-intent";
 
 type StylistRequestInput = z.infer<typeof stylistRequestSchema>;
 
@@ -15,12 +14,13 @@ export async function handleStylistChat(
   userId: string,
   input: StylistRequestInput,
 ) {
-  const environment = getServerEnvironment();
-  await enforceAiUsageLimits(supabase, {
-    feature: "stylist_generation",
-    dailyLimit: environment.DAILY_STYLIST_LIMIT,
-    rollingBucket: "stylist_generation",
-    rollingLimit: environment.STYLIST_RATE_LIMIT_PER_MINUTE,
+  // Route first, then charge: a deterministic wardrobe lookup or insight must
+  // not spend a stylist generation, and a planning or packing turn must spend
+  // exactly one planner unit rather than one of each.
+  const resolved = await resolveChatIntentWithQuota(supabase, {
+    userId,
+    request: input.message,
+    date: input.date,
   });
 
   const conversationId = await ensureConversation(
@@ -39,5 +39,5 @@ export async function handleStylistChat(
   });
   if (messageError) throw messageError;
 
-  return buildResponseStream(supabase, userId, conversationId, input);
+  return buildResponseStream(supabase, userId, conversationId, input, resolved);
 }

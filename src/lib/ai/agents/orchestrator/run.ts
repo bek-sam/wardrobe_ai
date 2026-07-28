@@ -4,7 +4,11 @@ import { answerItemQuestion } from "./handlers/item-question";
 import { answerOutfitRequest } from "./handlers/outfit";
 import { answerPackingRequest } from "./handlers/packing";
 import { answerPlanningRequest } from "./handlers/planning";
-import { resolveWardrobeIntent, resolveWardrobeIntentDeterministic } from "./intent";
+import {
+  resolveWardrobeIntent,
+  resolveWardrobeIntentDeterministic,
+  type ResolvedIntent,
+} from "./intent";
 import type { StylistOrchestratorInput } from "./types";
 
 /**
@@ -12,22 +16,27 @@ import type { StylistOrchestratorInput } from "./types";
  * that can actually answer that question. Only "outfit_request" composes an
  * outfit, so an item lookup or a wear-history question never spends a stylist
  * call trying to dress the user.
+ *
+ * `resolved` comes from the authenticated chat boundary, which has to know the
+ * route before it can charge the right quota. Threading it through is what
+ * guarantees a request is classified exactly once per turn.
  */
 export async function runWardrobeOrchestrator(
   input: StylistOrchestratorInput,
+  resolved?: ResolvedIntent,
 ): Promise<WardrobeAnswer> {
-  const resolved = await resolveWardrobeIntent(input);
-  switch (resolved.intent) {
+  const route = resolved ?? (await resolveWardrobeIntent(input));
+  switch (route.intent) {
     case "item_question":
-      return answerItemQuestion(input, resolved);
+      return answerItemQuestion(input, route);
     case "insight":
-      return answerInsightRequest(input, resolved);
+      return answerInsightRequest(input, route);
     case "packing":
-      return answerPackingRequest(input, resolved);
+      return answerPackingRequest(input, route);
     case "planning":
-      return answerPlanningRequest(input, resolved);
+      return answerPlanningRequest(input, route);
     default:
-      return answerOutfitRequest(input, resolved);
+      return answerOutfitRequest(input, route);
   }
 }
 

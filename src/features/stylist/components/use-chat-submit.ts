@@ -9,7 +9,7 @@ import type { useStylistSession } from "./use-stylist-session";
 export function useChatSubmit(
   session: ReturnType<typeof useStylistSession>,
   styling: ReturnType<typeof useStylingContext>,
-  aiAvailable: boolean,
+  chatAvailable: boolean,
   historyTranscriptLoading: boolean,
   onDone: () => void,
 ) {
@@ -19,7 +19,7 @@ export function useChatSubmit(
     event?.preventDefault();
     const requestMessage = (prompt ?? styling.message).trim();
     if (
-      !aiAvailable ||
+      !chatAvailable ||
       !requestMessage ||
       !styling.date ||
       session.streamState !== "idle" ||

@@ -10,17 +10,17 @@ import type { useStylistSession } from "./use-stylist-session";
 export function ChatPanel({
   session,
   styling,
-  aiAvailable,
+  chatAvailable,
   historyTranscriptLoading,
   onSubmit,
 }: {
   session: ReturnType<typeof useStylistSession>;
   styling: ReturnType<typeof useStylingContext>;
-  aiAvailable: boolean;
+  chatAvailable: boolean;
   historyTranscriptLoading: boolean;
   onSubmit: (event?: FormEvent<HTMLFormElement>, prompt?: string) => void;
 }) {
-  const busy = !aiAvailable || session.streamState !== "idle" || historyTranscriptLoading;
+  const busy = !chatAvailable || session.streamState !== "idle" || historyTranscriptLoading;
   return (
     <section className="chat-panel" aria-label="Stylist conversation">
       <ChatContextChips date={styling.date} location={styling.location} />
@@ -31,7 +31,7 @@ export function ChatPanel({
       />
       <QuickPrompts disabled={busy} onSelect={(prompt) => onSubmit(undefined, prompt)} />
       <ChatComposer
-        aiAvailable={aiAvailable}
+        chatAvailable={chatAvailable}
         canSubmit={!busy && Boolean(styling.message.trim()) && Boolean(styling.date)}
         disabled={busy}
         message={styling.message}

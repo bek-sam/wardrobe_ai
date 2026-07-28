@@ -12,7 +12,12 @@ export {
   hasMultiDayMarker,
   resolvePlanWindow,
 } from "./plan-window";
-export { resolveWardrobeIntent, resolveWardrobeIntentDeterministic } from "./resolve-intent";
+export {
+  ESCALATION_CONFIDENCE_THRESHOLD,
+  resolveWardrobeIntent,
+  resolveWardrobeIntentDeterministic,
+} from "./resolve-intent";
+export type { IntentEscalationGate } from "./resolve-intent";
 export type {
   InsightFocus,
   IntentDateRange,

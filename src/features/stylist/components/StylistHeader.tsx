@@ -2,27 +2,30 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { PageHeader } from "@/components/ui/PageHeader";
 
+import { hasGenerationCapability, type StylistCapabilities } from "../capabilities";
+
 export function StylistHeader({
-  aiAvailable,
+  capabilities,
   showReset,
   resetDisabled,
   onReset,
 }: {
-  aiAvailable: boolean;
+  capabilities: StylistCapabilities;
   showReset: boolean;
   resetDisabled: boolean;
   onReset: () => void;
 }) {
+  const label = !capabilities.chatAvailable
+    ? "Sign in required"
+    : hasGenerationCapability(capabilities)
+      ? "Owned items only"
+      : "Lookups & insights only";
   return (
     <PageHeader
       eyebrow="Wardrobe orchestrator"
       title="Your stylist"
       description="Ask naturally. Recommendations use only authenticated, available wardrobe items."
-      meta={
-        <Badge tone={aiAvailable ? "sage" : "outline"}>
-          {aiAvailable ? "Owned items only" : "AI disabled"}
-        </Badge>
-      }
+      meta={<Badge tone={capabilities.chatAvailable ? "sage" : "outline"}>{label}</Badge>}
       actions={
         showReset ? (
           <Button disabled={resetDisabled} onClick={onReset} variant="ghost">

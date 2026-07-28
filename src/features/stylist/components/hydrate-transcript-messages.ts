@@ -15,7 +15,11 @@ export function hydrateTranscriptMessages(
       };
     }
     const storedAnswer = normalizeStylistAnswer(entry.structuredResult);
-    return storedAnswer ? { ...entry, details: storedAnswer.details } : entry;
+    // Restores the saved/unsaved state of a plan too, so reloading a
+    // conversation never re-offers an action the user already completed.
+    return storedAnswer
+      ? { ...entry, details: storedAnswer.details, plan: storedAnswer.plan }
+      : entry;
   });
 }
 

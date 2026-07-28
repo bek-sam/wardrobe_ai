@@ -1,10 +1,10 @@
 import { resolveOccasionContextWithEscalation } from "@/lib/ai/agents/occasion-agent";
 import { getPreferences } from "@/lib/ai/tools/get-preferences";
-import { getServerEnvironment } from "@/lib/env/server";
 
 import type { OutfitAnswer } from "../answers.types";
 import { composeOutfit } from "../compose-outfit";
 import type { ResolvedIntent } from "../intent";
+import { requireStylistModel } from "../require-model";
 import { resolveOrchestratorWeather } from "../resolve-weather";
 import { retrieveAlternatives } from "../retrieve-alternatives";
 import { tryServeRetrievedOutfit } from "../serve-retrieved";
@@ -20,7 +20,7 @@ export async function answerOutfitRequest(
   resolved: ResolvedIntent,
 ): Promise<OutfitAnswer> {
   const startedAt = Date.now();
-  const environment = getServerEnvironment();
+  const environment = requireStylistModel();
   const scoped =
     resolved.range?.dayCount === 1 ? { ...input, date: resolved.range.startDate } : input;
 

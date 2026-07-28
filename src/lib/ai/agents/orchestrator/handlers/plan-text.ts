@@ -8,7 +8,7 @@ export function planAnswerText(
   const gaps = missingCategories.length
     ? ` Gaps worth knowing about: ${missingCategories.slice(0, 3).join(", ")}.`
     : "";
-  return `Here is a ${dayCount}-day plan for ${range}, built only from items you own and each day's forecast.${gaps} Nothing was saved — keep any look you like from the planner page.`;
+  return `Here is a ${dayCount}-day plan for ${range}, built only from items you own and each day's forecast.${gaps} It was not saved automatically — use “Save plan” below to keep it.`;
 }
 
 export function packingAnswerText(

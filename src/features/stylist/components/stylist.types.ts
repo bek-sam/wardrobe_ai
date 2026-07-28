@@ -54,6 +54,8 @@ export type ChatMessage = {
   note?: string | null;
   /** Summary lines for non-outfit answers (plan days, matches, highlights). */
   details?: string[];
+  /** Set only for a saveable planning answer; drives the "Save plan" action. */
+  plan?: { generationId: string; saved: boolean } | null;
   time: string;
   structuredResult?: unknown;
 };
@@ -83,7 +85,7 @@ export type ChatComposerProps = {
   message: string;
   onMessage: (value: string) => void;
   disabled: boolean;
-  aiAvailable: boolean;
+  chatAvailable: boolean;
   streamState: "idle" | "thinking" | "details";
   canSubmit: boolean;
   onSubmit: (event: import("react").FormEvent<HTMLFormElement>) => void;

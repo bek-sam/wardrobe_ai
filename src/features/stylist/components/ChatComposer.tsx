@@ -8,7 +8,7 @@ export function ChatComposer({
   message,
   onMessage,
   disabled,
-  aiAvailable,
+  chatAvailable,
   streamState,
   canSubmit,
   onSubmit,
@@ -24,9 +24,9 @@ export function ChatComposer({
         maxLength={2000}
         onChange={(event) => onMessage(event.target.value)}
         placeholder={
-          aiAvailable
+          chatAvailable
             ? "Ask about an outfit, item, occasion, or trip…"
-            : "AI stylist is not configured"
+            : "Sign in to ask your stylist"
         }
         rows={3}
         value={message}

@@ -7,6 +7,16 @@ import { INTENT_CLASSIFICATION_PROMPT, intentClassificationSchema } from "./sche
 import type { IntentScore } from "./types";
 
 /**
+ * Whether escalation is even possible. Checked before the rolling limit is
+ * charged so an unconfigured deployment spends nothing on a call it cannot
+ * make -- and so the deterministic routes stay usable with no OpenAI env set.
+ */
+export function canClassifyWardrobeIntentWithModel() {
+  const environment = getServerEnvironment();
+  return Boolean(environment.OPENAI_API_KEY && environment.OPENAI_STYLIST_MODEL);
+}
+
+/**
  * Escalation for requests the keyword rules could not read confidently.
  * Returns null whenever the model is unconfigured or the call fails, so the
  * caller keeps the deterministic classification -- a real, safe route, not a
@@ -17,7 +27,7 @@ export async function classifyWardrobeIntentWithModel(
   userId: string,
 ): Promise<IntentScore | null> {
   const environment = getServerEnvironment();
-  if (!environment.OPENAI_API_KEY || !environment.OPENAI_STYLIST_MODEL) return null;
+  if (!canClassifyWardrobeIntentWithModel()) return null;
 
   try {
     const response = await getOpenAIClient().responses.parse({

@@ -1,5 +1,7 @@
 "use client";
 
+import type { StylistCapabilities } from "../capabilities";
+
 import { ChatPanel } from "./ChatPanel";
 import { PreviewStylist } from "./PreviewStylist";
 import { RecommendationPanel } from "./RecommendationPanel";
@@ -9,14 +11,14 @@ import { useStylistWorkspaceState } from "./use-stylist-workspace-state";
 
 export function StylistWorkspace({
   supabaseConfigured,
-  aiConfigured,
+  capabilities,
   initialDate,
 }: {
   supabaseConfigured: boolean;
-  aiConfigured: boolean;
+  capabilities: StylistCapabilities;
   initialDate: string;
 }) {
-  const state = useStylistWorkspaceState(supabaseConfigured, aiConfigured, initialDate);
+  const state = useStylistWorkspaceState(supabaseConfigured, capabilities, initialDate);
 
   if (!supabaseConfigured) return <PreviewStylist />;
 
@@ -24,10 +26,10 @@ export function StylistWorkspace({
 
   return (
     <>
-      <StylistTopSection aiConfigured={aiConfigured} busy={busy} state={state} />
+      <StylistTopSection busy={busy} state={state} />
       <div className="stylist-layout">
         <ChatPanel
-          aiAvailable={state.aiAvailable}
+          chatAvailable={state.chatAvailable}
           historyTranscriptLoading={loader.historyTranscriptLoading}
           onSubmit={chat.submit}
           session={session}
