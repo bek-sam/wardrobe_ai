@@ -57,7 +57,7 @@ Expensive/long-running work (image import, product research, storage cleanup) is
 - `features/*`: per-feature types, Zod schemas, hooks, and components (auth, wardrobe, intake/import, research, stylist, planner, outfits, insights, today, settings, weather, uploads).
 - `lib/supabase`: browser / server-session / admin (service-role) Supabase clients — pick the least-privileged one that works.
 - `lib/auth`: authenticated viewer resolution.
-- `lib/image`: decoded-content validation, EXIF stripping, normalization, cropping, thumbnails.
+- `lib/image`: decoded-content validation, EXIF stripping, normalization, cropping.
 - `lib/recommendation`: hard filters, scoring weights, color/layer compatibility, exact-ID outfit validation, balanced planning — all deterministic, no model calls.
 - `lib/weather`: Open-Meteo geocoding/forecast + deterministic clothing constraints.
 - `lib/ai`: OpenAI client selection, strict Zod schemas, prompts, and the agents in `lib/ai/agents/*` (orchestrator, cataloging, stylist, planner, research).
