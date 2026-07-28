@@ -7,11 +7,9 @@ import type { useStylistWorkspaceState } from "./use-stylist-workspace-state";
 
 export function StylistTopSection({
   state,
-  aiConfigured,
   busy,
 }: {
   state: ReturnType<typeof useStylistWorkspaceState>;
-  aiConfigured: boolean;
   busy: boolean;
 }) {
   const { session, styling, list, loader } = state;
@@ -21,12 +19,12 @@ export function StylistTopSection({
   return (
     <>
       <StylistHeader
-        aiAvailable={state.aiAvailable}
+        capabilities={state.capabilities}
         onReset={session.resetConversation}
         resetDisabled={busy}
         showReset={Boolean(session.messages.length || session.conversationId)}
       />
-      <StylistAiDisabledNotice aiConfigured={aiConfigured} />
+      <StylistAiDisabledNotice capabilities={state.capabilities} />
       <ConversationHistoryBar
         conversationCount={list.conversationCount}
         conversationId={session.conversationId}

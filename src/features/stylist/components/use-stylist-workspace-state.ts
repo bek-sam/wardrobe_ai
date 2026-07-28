@@ -1,5 +1,7 @@
 import { useRef } from "react";
 
+import type { StylistCapabilities } from "../capabilities";
+
 import { useChatSubmit } from "./use-chat-submit";
 import { useConversationList } from "./use-conversation-list";
 import { useLoadConversation } from "./use-load-conversation";
@@ -10,7 +12,7 @@ import { useStylistSession } from "./use-stylist-session";
 
 export function useStylistWorkspaceState(
   supabaseConfigured: boolean,
-  aiConfigured: boolean,
+  capabilities: StylistCapabilities,
   initialDate: string,
 ) {
   const historyTranscriptAbortRef = useRef<AbortController | null>(null);
@@ -18,11 +20,14 @@ export function useStylistWorkspaceState(
   const styling = useStylingContext(initialDate);
   const list = useConversationList(supabaseConfigured);
   const loader = useLoadConversation(session, historyTranscriptAbortRef);
-  const aiAvailable = supabaseConfigured && aiConfigured;
+  // Chat is enabled by the account, not by a model: the wardrobe-lookup and
+  // insight routes never call OpenAI, so disabling the composer when only the
+  // generation models are missing would remove features that still work.
+  const chatAvailable = supabaseConfigured && capabilities.chatAvailable;
   const chat = useChatSubmit(
     session,
     styling,
-    aiAvailable,
+    chatAvailable,
     loader.historyTranscriptLoading,
     () => void list.loadConversationList(),
   );
@@ -35,5 +40,16 @@ export function useStylistWorkspaceState(
     session.feedbackBusy ||
     session.swapBusy;
 
-  return { session, styling, list, loader, chat, preview, actions, aiAvailable, busy };
+  return {
+    session,
+    styling,
+    list,
+    loader,
+    chat,
+    preview,
+    actions,
+    capabilities,
+    chatAvailable,
+    busy,
+  };
 }

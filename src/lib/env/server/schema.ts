@@ -42,6 +42,11 @@ export const serverEnvironmentSchema = z.object({
   DAILY_PLANNER_LIMIT: optionalPositiveInteger(10),
   STYLIST_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(5),
   PLANNER_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(2),
+  // Deterministic wardrobe lookups and insights spend no daily generation
+  // budget, so their only ceiling is this rolling abuse limit.
+  WARDROBE_QUERY_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(20),
+  // Bounds how often ambiguous text may escalate to the classifier model.
+  INTENT_CLASSIFICATION_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(10),
   IMAGE_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(3),
   OPENAI_CURATOR_MODEL: optionalString,
   WARDROBE_CURATOR_MAX_CANDIDATES: optionalPositiveInteger(40),

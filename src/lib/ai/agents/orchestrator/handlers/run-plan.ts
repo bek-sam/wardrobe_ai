@@ -1,10 +1,8 @@
 import { buildPlannerDays, runPlannerAgent } from "@/lib/ai/agents/planner-agent";
 import { getPreferences } from "@/lib/ai/tools/get-preferences";
-import { getServerEnvironment } from "@/lib/env/server";
-import { createClient } from "@/lib/supabase/server";
-import { enforceAiUsageLimits } from "@/lib/usage/limits";
 
 import { addDays, type IntentDateRange } from "../intent";
+import { requirePlannerModel } from "../require-model";
 import { buildPlanDayViews } from "./plan-view";
 
 type PlanWindowInput = {
@@ -16,20 +14,15 @@ type PlanWindowInput = {
 
 /**
  * Shared multi-day pipeline for the planning and packing routes: one planner
- * call over per-day weather and per-day eligible candidates. Planner quota is
- * consumed here because these routes enter through the stylist endpoints,
- * which only charge the stylist budget.
+ * call over per-day weather and per-day eligible candidates.
+ *
+ * Quota is deliberately NOT charged here. This is not the authenticated
+ * request boundary; both callers arrive from a boundary that has already
+ * consumed exactly one planner unit for the resolved intent, so charging again
+ * here would double-bill the same request.
  */
 export async function runPlanForWindow(input: PlanWindowInput) {
-  const environment = getServerEnvironment();
-  const supabase = await createClient();
-  await enforceAiUsageLimits(supabase, {
-    feature: "planner_generation",
-    dailyLimit: environment.DAILY_PLANNER_LIMIT,
-    rollingBucket: "planner_generation",
-    rollingLimit: environment.PLANNER_RATE_LIMIT_PER_MINUTE,
-  });
-
+  const environment = requirePlannerModel();
   const preferences = await getPreferences(input.userId);
   const days = Array.from({ length: input.window.dayCount }, (_unused, index) => ({
     date: addDays(input.window.startDate, index),
@@ -49,6 +42,6 @@ export async function runPlanForWindow(input: PlanWindowInput) {
     missingCategories: planned.result.missingCategories,
     responseId: planned.responseId,
     usage: planned.usage ?? {},
-    model: environment.OPENAI_PLANNER_MODEL ?? "unconfigured",
+    model: environment.OPENAI_PLANNER_MODEL,
   };
 }

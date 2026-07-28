@@ -3,31 +3,30 @@ import type { z } from "zod";
 
 import { sanitizeStylistStructuredResult } from "@/features/stylist/history";
 import type { stylistRequestSchema } from "@/features/stylist/schemas";
-import { runWardrobeOrchestrator } from "@/lib/ai/agents/orchestrator";
+import { runWardrobeOrchestrator, type ResolvedIntent } from "@/lib/ai/agents/orchestrator";
 
 import { emitStreamError } from "./emit-stream-error";
+import { toOrchestratorInput } from "./orchestrator-input";
 import { sseEvent } from "./sse";
 
 type StylistRequestInput = z.infer<typeof stylistRequestSchema>;
+
+type EmitContext = {
+  userId: string;
+  conversationId: string;
+  input: StylistRequestInput;
+  /** Resolved at the authenticated boundary; never re-classified here. */
+  resolved: ResolvedIntent;
+};
 
 export async function emitStylistResult(
   controller: ReadableStreamDefaultController<Uint8Array>,
   encoder: TextEncoder,
   supabase: SupabaseClient,
-  userId: string,
-  conversationId: string,
-  input: StylistRequestInput,
+  { userId, conversationId, input, resolved }: EmitContext,
 ) {
   try {
-    const result = await runWardrobeOrchestrator({
-      userId,
-      request: input.message,
-      date: input.date,
-      location: input.location,
-      occasion: input.occasion,
-      targetFormality: input.targetFormality,
-      indoorOutdoor: input.indoorOutdoor,
-    });
+    const result = await runWardrobeOrchestrator(toOrchestratorInput(userId, input), resolved);
     const userVisibleResult = sanitizeStylistStructuredResult(result);
     if (!userVisibleResult) throw new Error("The stylist result could not be serialized.");
     const { error } = await supabase.from("messages").insert({
