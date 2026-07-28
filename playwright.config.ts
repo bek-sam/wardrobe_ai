@@ -1,5 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
+import { applyLocalSupabaseEnv } from "./tests/e2e/local-supabase-env";
+
+// Resolved at config load so the dev server Playwright starts and the specs
+// share one local Supabase instance. Returns false (and skips the
+// authenticated specs) when Supabase is not running.
+applyLocalSupabaseEnv();
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
@@ -21,5 +28,14 @@ export default defineConfig({
     url: "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    env: {
+      // Authenticated specs need the app pointed at local Supabase. No OpenAI
+      // variable is passed: the routes they exercise are deterministic, and
+      // leaving the models unset also proves chat works without them.
+      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "",
+      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000",
+    },
   },
 });
