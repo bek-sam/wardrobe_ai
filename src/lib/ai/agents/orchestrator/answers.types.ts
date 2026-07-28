@@ -57,8 +57,11 @@ export type PlanAnswer = WardrobeAnswerBase & {
   dayCount: number;
   days: PlanDayView[];
   missingCategories: string[];
-  /** Chat never writes plans: the proposal is saved only from the planner UI. */
-  saved: false;
+  /**
+   * Chat never auto-saves: a fresh plan answer is always false and only an
+   * explicit save (POST /api/plans/generated) makes it true.
+   */
+  saved: boolean;
 };
 
 export type PackingListEntry = {

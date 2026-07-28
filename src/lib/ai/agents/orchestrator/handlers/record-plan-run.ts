@@ -1,5 +1,6 @@
 import type { IntentDateRange, WardrobeIntent } from "../intent";
 import { recordWardrobeOrchestratorRun } from "../record-agent-run";
+import { buildRecordedPlans } from "./recorded-plans";
 import type { runPlanForWindow } from "./run-plan";
 
 type RecordPlanRunInput = {
@@ -35,6 +36,10 @@ export function recordPlanRun({
       itemIds: plan.views.flatMap((view) => view.items.map((item) => item.item_id)),
       responseId: plan.responseId,
       missingCategories: plan.missingCategories,
+      // Only a planning run is saveable, so only a planning run records the
+      // replayable representation. A packing list stays advisory in this
+      // iteration and deliberately carries nothing the save RPC could act on.
+      ...(intent === "planning" ? { plans: buildRecordedPlans(plan.views) } : {}),
     },
     model: plan.model,
     latencyMs: Date.now() - startedAt,

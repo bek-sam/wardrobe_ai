@@ -25,6 +25,9 @@ export function applyAnswerResult(
       role: "assistant",
       content: answer.answer,
       details: answer.details,
+      // Live SSE keeps the same structured metadata a reloaded transcript
+      // would, so the save action works without refreshing the page.
+      plan: answer.plan,
       time: currentTime(),
     },
   ]);

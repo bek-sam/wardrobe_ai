@@ -61,7 +61,13 @@ export const planAnswerSchema = z.object({
   ...planWindow,
   kind: z.literal("plan"),
   intent: z.literal("planning"),
-  saved: z.literal(false),
+  /**
+   * Whether this plan has been written to outfit_plans. A new answer is always
+   * false -- chat never auto-saves -- and save_recorded_generated_week flips
+   * the stored message to true, so a reloaded conversation is accurate.
+   * Anything non-boolean sanitizes away rather than being trusted.
+   */
+  saved: z.boolean(),
 });
 
 export const packingAnswerSchema = z.object({

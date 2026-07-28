@@ -1,5 +1,6 @@
 import { Sparkle } from "@phosphor-icons/react";
 
+import { PlanAnswerActions } from "./PlanAnswerActions";
 import type { ChatMessage } from "./stylist.types";
 
 export function ChatMessageItem({ entry }: { entry: ChatMessage }) {
@@ -20,6 +21,14 @@ export function ChatMessageItem({ entry }: { entry: ChatMessage }) {
           </ul>
         ) : null}
         {entry.note ? <small>{entry.note}</small> : null}
+        {/* Only a planning answer carries `plan`; packing lists, insights,
+            item questions, and outfits never render a save action. */}
+        {entry.plan ? (
+          <PlanAnswerActions
+            generationId={entry.plan.generationId}
+            initiallySaved={entry.plan.saved}
+          />
+        ) : null}
         <time>{entry.time}</time>
       </div>
     </article>
