@@ -1,7 +1,8 @@
-import { expect, test } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { generateTotp } from "../support/totp";
+import { expect, test } from "./fixtures";
+
+import { generateTotp, waitForNextTotpStep } from "../support/totp";
 import {
   adminClient,
   createDisposableUser,
@@ -20,6 +21,12 @@ const supabaseReady = e2eSupabaseConfig() !== null;
 test.describe("two-factor authentication", () => {
   test.skip(!supabaseReady, "Local Supabase is not configured.");
   test.setTimeout(120_000);
+  // These two share one account and one factor: the first test enrols it, the
+  // second assumes the challenge already exists. Under the project's
+  // `fullyParallel` they otherwise run at once in separate workers, and the
+  // second signs in before any factor exists — reaching /today rather than the
+  // challenge it is written to exercise.
+  test.describe.configure({ mode: "serial" });
 
   let admin: SupabaseClient;
   let user: SeededUser;
@@ -42,7 +49,9 @@ test.describe("two-factor authentication", () => {
 
     const security = page.locator("#settings-security");
     // The recovery warning must be visible before anyone commits to this.
-    await expect(security.getByText(/no recovery codes/i)).toBeVisible();
+    // The section renders from /api/account/security, so this waits on a real
+    // round trip — well past the 5s default on a dev server compiling routes.
+    await expect(security.getByText(/no recovery codes/i)).toBeVisible({ timeout: 30_000 });
     await security.getByRole("button", { name: /set up an authenticator app/i }).click();
 
     // The setup key is shown once, in the page, for a user who cannot scan.
@@ -62,7 +71,10 @@ test.describe("two-factor authentication", () => {
     await page.getByLabel("Password", { exact: true }).fill(user.password);
     await page.getByRole("button", { name: /log in securely/i }).click();
 
-    await expect(page).toHaveURL(/\/mfa\/verify/);
+    // The requested page has to survive the challenge. Carrying the login URL
+    // itself here would send the user to /login afterwards, which — now signed
+    // in — bounces to the default page and loses /wardrobe silently.
+    await expect(page).toHaveURL(/\/mfa\/verify\?returnTo=%2Fwardrobe/);
     await expect(
       page.getByRole("heading", { name: /enter your authenticator code/i }),
     ).toBeVisible();
@@ -73,6 +85,10 @@ test.describe("two-factor authentication", () => {
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(page.getByLabel(/six-digit code/i)).toHaveValue("");
 
+    // Enrolment above already redeemed this step's code, and a redeemed code is
+    // refused a second time. Waiting for the next step is what makes this a
+    // genuine "correct code" rather than a replay of the one just used.
+    await waitForNextTotpStep();
     await page.getByLabel(/six-digit code/i).fill(generateTotp(secret));
     await page.getByRole("button", { name: /verify and continue/i }).click();
     await expect(page).toHaveURL(/\/wardrobe/);

@@ -39,9 +39,14 @@ export function useLoadConversation(
         caught instanceof Error ? caught.message : "The conversation could not be loaded.",
       );
     } finally {
+      // Always cleared, even when this load was superseded: nothing else owns
+      // this flag, and `busy` in ChatPanel includes it — leaving it set locks
+      // the composer for the rest of the page's life. The stream state is the
+      // opposite case: whoever took over owns it now, and forcing it to "idle"
+      // here would re-enable the composer in the middle of their request.
+      setHistoryTranscriptLoading(false);
       if (abortRef.current === controller) {
         abortRef.current = null;
-        setHistoryTranscriptLoading(false);
         session.setStreamState("idle");
       }
     }

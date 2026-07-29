@@ -7,6 +7,7 @@ import { mapAuthError } from "@/lib/auth/auth-error";
 import { hasPasswordIdentity, normalizeIdentities } from "@/lib/auth/identities";
 import { isSupportedProvider } from "@/lib/auth/providers.data";
 import { isRecentAuthentication, latestAuthenticationAt } from "@/lib/auth/recent-auth";
+import { carriedDestination } from "@/lib/proxy/carried-destination";
 import { resolveRoute } from "@/lib/proxy/resolve-route";
 import { canUnlinkIdentity } from "@/lib/auth/unlink-guard";
 
@@ -143,6 +144,33 @@ describe("proxy routing decisions", () => {
       pathname: "/today",
       carryReturnTo: false,
     });
+  });
+});
+
+describe("the destination carried onto a redirect", () => {
+  const at = (path: string) => new URL(path, "https://wardrobe.test");
+
+  it("carries the requested page, query and all", () => {
+    expect(carriedDestination(at("/wardrobe?sort=recent"))).toBe("/wardrobe?sort=recent");
+  });
+
+  /**
+   * An MFA-pending user loading `/login?returnTo=/wardrobe` must not be sent to
+   * the challenge carrying `/login` as their destination: passing it would
+   * return them to a signed-out-only page, which bounces to the default and
+   * silently loses the `/wardrobe` they asked for.
+   */
+  it("unwraps the real destination from a signed-out-only route", () => {
+    expect(carriedDestination(at("/login?returnTo=%2Fwardrobe"))).toBe("/wardrobe");
+  });
+
+  it("falls back to the default when such a route carries no destination", () => {
+    expect(carriedDestination(at("/login"))).toBe("/today");
+  });
+
+  it("never carries an off-origin destination out of one", () => {
+    expect(carriedDestination(at("/login?returnTo=https%3A%2F%2Fevil.example"))).toBe("/today");
+    expect(carriedDestination(at("/login?returnTo=%2F%2Fevil.example"))).toBe("/today");
   });
 });
 

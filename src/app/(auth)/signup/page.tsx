@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AuthConfigurationNote } from "@/components/ui/AuthConfigurationNote";
+import { AuthEmailDivider } from "@/components/ui/AuthEmailDivider";
 import { AuthFeedback } from "@/components/ui/AuthFeedback";
 import { OAuthGoogleButton } from "@/components/ui/OAuthGoogleButton";
 import type { SearchParamValue } from "@/components/ui/search-param-value";
@@ -18,7 +19,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Signu
   const configured = isSupabaseConfigured();
   // Read on the server. The route enforces this flag independently — the form
   // state is only so the page tells the truth about what will happen.
-  const signupEnabled = getAuthFlags().publicSignupEnabled;
+  const { publicSignupEnabled: signupEnabled, googleAuthEnabled } = getAuthFlags();
 
   return (
     <section className="auth-card" aria-labelledby="signup-title">
@@ -39,9 +40,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Signu
           </p>
         </div>
       ) : null}
-      <div className="auth-divider">
-        <span>or use email</span>
-      </div>
+      <AuthEmailDivider shown={signupEnabled && googleAuthEnabled} />
       <SignupForm enabled={configured && signupEnabled} />
       <AuthConfigurationNote
         configured={configured}

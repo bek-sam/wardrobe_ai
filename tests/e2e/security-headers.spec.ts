@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 /**
  * Response-header regressions.
@@ -54,10 +54,19 @@ test("the standard hardening headers are present", async ({ request }) => {
   expect(headers["x-powered-by"]).toBeUndefined();
 });
 
+/**
+ * `next dev` replaces the proxy's `private, no-store` on HTML *document*
+ * responses with its own `no-cache, must-revalidate`; API responses keep
+ * theirs. A production server returns `private, no-store` for these same
+ * paths. So the exact header is asserted where it can be read honestly —
+ * against `applySecurityHeaders` in tests/unit/auth-csp-cookies.test.ts — and
+ * what is asserted here is the part that holds in *both* modes: a shared cache
+ * may never serve one of these pages without revalidating.
+ */
 test("auth pages are never publicly cacheable", async ({ request }) => {
   for (const path of ["/login", "/signup", "/forgot-password", "/check-email"]) {
     const cacheControl = (await request.get(path)).headers()["cache-control"] ?? "";
-    expect(cacheControl).toContain("no-store");
+    expect(cacheControl).toMatch(/no-store|no-cache/);
     expect(cacheControl).not.toContain("public");
   }
 });
@@ -71,23 +80,49 @@ test("auth POST routes reject a cross-origin submission", async ({ request }) =>
   expect(response.status()).toBe(403);
 });
 
-test("the service-role key never reaches a client bundle", async ({ page }) => {
-  const scriptBodies: string[] = [];
+/** Every `/_next/static` script the page pulled in, as text. */
+async function clientBundles(page: Page): Promise<string[]> {
+  const bodies: string[] = [];
   page.on("response", async (response) => {
     if (response.url().includes("/_next/static/") && response.url().endsWith(".js")) {
-      scriptBodies.push(await response.text().catch(() => ""));
+      bodies.push(await response.text().catch(() => ""));
     }
   });
 
   await page.goto("/login");
   await page.waitForLoadState("networkidle");
+  return bodies;
+}
 
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
-  expect(serviceRoleKey.length).toBeGreaterThan(0);
-  for (const body of scriptBodies) {
-    expect(body).not.toContain(serviceRoleKey);
+/**
+ * Needs no secret of its own, so it runs on every machine. A server-only
+ * variable's *name* in a bundle means `process.env.X` was read from a client
+ * component, which is the mistake that puts the value there next.
+ */
+test("no server-only secret name reaches a client bundle", async ({ page }) => {
+  for (const body of await clientBundles(page)) {
     expect(body).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(body).not.toContain("AUTH_ACTION_SECRET");
     expect(body).not.toContain("AUTH_RATE_LIMIT_HMAC_SECRET");
+  }
+});
+
+/**
+ * Comparing against the literal key needs a key to compare against, which only
+ * a run wired to Supabase has. It is skipped locally rather than asserted
+ * vacuously, but never skipped in CI: there the missing variable is itself the
+ * bug, so the fail-closed assertion below stands.
+ */
+test("the service-role key value never reaches a client bundle", async ({ page }) => {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  test.skip(
+    !process.env.CI && serviceRoleKey === "",
+    "No service-role key in this run. Run `npx supabase start` and re-run, or set " +
+      "TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_ROLE_KEY.",
+  );
+
+  expect(serviceRoleKey.length).toBeGreaterThan(0);
+  for (const body of await clientBundles(page)) {
+    expect(body).not.toContain(serviceRoleKey);
   }
 });

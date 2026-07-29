@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 
+import { carriedDestination } from "./carried-destination";
 import { copySessionCookies } from "./copy-session-cookies";
 import { createNonce } from "./create-nonce";
 import { createSessionClient } from "./create-session-client";
@@ -35,7 +36,7 @@ export async function runProxy(request: NextRequest) {
     target.pathname = decision.pathname;
     target.search = "";
     if (decision.carryReturnTo) {
-      target.searchParams.set("returnTo", `${request.nextUrl.pathname}${request.nextUrl.search}`);
+      target.searchParams.set("returnTo", carriedDestination(request.nextUrl));
     }
     // Session cookies refreshed during this pass are carried onto the
     // redirect; dropping them would sign the user out on every redirect.

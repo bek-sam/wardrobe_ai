@@ -19,11 +19,18 @@ let doomed: TestUser;
 let bystander: TestUser;
 let bystanderObject: string;
 
+/**
+ * The wardrobe buckets restrict `allowed_mime_types` to images, so the stored
+ * object has to declare one — an untyped blob is refused on the MIME policy
+ * before any of the deletion behaviour under test is reached.
+ */
 async function upload(userId: string, bucket: string): Promise<string> {
-  const path = `${userId}/${randomUUID()}.bin`;
+  const path = `${userId}/${randomUUID()}.png`;
   const { error } = await admin.storage
     .from(bucket)
-    .upload(path, new Blob([new Uint8Array([1, 2, 3])]));
+    .upload(path, new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }), {
+      contentType: "image/png",
+    });
   if (error) throw error;
   return path;
 }
@@ -213,13 +220,19 @@ describe("account deletion lifecycle", () => {
 describe("dead-lettering and health", () => {
   it("retires an object after its attempt budget and flags the parent", async () => {
     const orphan = await createTestUser(admin);
-    const path = `${orphan.id}/${randomUUID()}.bin`;
-    await admin.rpc("enqueue_storage_deletion", {
-      p_user_id: orphan.id,
-      p_bucket_id: "wardrobe-items",
-      p_storage_path: path,
-      p_reason: "account_deletion",
+    const path = `${orphan.id}/${randomUUID()}.png`;
+    // Queued by row, not by RPC: `enqueue_storage_deletion` is deliberately not
+    // executable by any API role — it runs only from the security-definer
+    // triggers and from start_account_deletion — while service_role does hold
+    // table grants. Calling it over PostgREST fails, and this assertion is here
+    // so such a failure can never again be mistaken for an empty queue.
+    const { error: queueError } = await admin.from("storage_deletion_queue").insert({
+      user_id: orphan.id,
+      bucket_id: "wardrobe-items",
+      storage_path: path,
+      reason: "account_deletion",
     });
+    expect(queueError).toBeNull();
     await orphan.client.rpc("start_account_deletion");
 
     const { data: claimed } = await admin.rpc("claim_storage_deletion_tasks", {

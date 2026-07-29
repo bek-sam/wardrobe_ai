@@ -95,6 +95,36 @@ describe("development Content-Security-Policy", () => {
   });
 });
 
+/**
+ * The response headers the proxy stamps on every request it handles.
+ *
+ * Asserted here rather than end to end because `next dev` overwrites
+ * `Cache-Control` on HTML document responses with its own
+ * `no-cache, must-revalidate`, so a dev server can never show this contract
+ * holding. Reading the function directly is the honest test of it.
+ */
+describe("proxy security headers", () => {
+  async function applyTo(nonce = "test-nonce") {
+    vi.resetModules();
+    const { NextResponse } = await import("next/server");
+    const { applySecurityHeaders } = await import("@/lib/proxy/security-headers");
+    return applySecurityHeaders(NextResponse.json({}), nonce);
+  }
+
+  it("keeps every proxied response out of shared and private caches alike", async () => {
+    const cacheControl = (await applyTo()).headers.get("Cache-Control") ?? "";
+    expect(cacheControl).toContain("no-store");
+    expect(cacheControl).toContain("private");
+    expect(cacheControl).not.toContain("public");
+  });
+
+  it("stamps the per-request nonce into the policy it sets", async () => {
+    const policy = (await applyTo("abc123")).headers.get("Content-Security-Policy") ?? "";
+    expect(policy).toContain("'nonce-abc123'");
+    expect(policy).toContain("frame-ancestors 'none'");
+  });
+});
+
 describe("Supabase cookie options", () => {
   it("marks cookies Secure in production", async () => {
     vi.resetModules();

@@ -19,6 +19,13 @@ export function MfaChallengeForm({ factors, returnTo }: { factors: Factor[]; ret
 
   return (
     <form className="auth-form" onSubmit={submit}>
+      {/* Submitting before hydration falls back to a native GET to this same
+          path, and the browser rebuilds the query from named fields only — so
+          without this the reload drops `returnTo` and the user is sent to the
+          default page after passing the challenge. The code field stays
+          deliberately unnamed: a native submit must never put a one-time code
+          into the URL, history, or a Referer header. */}
+      <input name="returnTo" type="hidden" value={returnTo} />
       {challenge.error ? (
         <div className="auth-feedback auth-feedback--error" role="alert">
           <p>{challenge.error}</p>

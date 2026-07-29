@@ -44,6 +44,25 @@ async function signIn(email: string, password: string): Promise<SupabaseClient> 
   return client;
 }
 
+/**
+ * A one-pixel upload the buckets actually accept.
+ *
+ * Every wardrobe bucket restricts `allowed_mime_types` to images, and Storage
+ * checks that before it ever consults RLS. Uploading an untyped blob therefore
+ * fails on the MIME policy no matter what the policies say — which would make
+ * the "cannot upload" assertions below pass without proving anything. Declaring
+ * an image type leaves RLS as the only thing that can reject the request.
+ */
+function imageUpload(client: SupabaseClient, userId: string, label: string) {
+  return client.storage
+    .from("wardrobe-originals")
+    .upload(
+      `${userId}/${label}-${randomUUID()}.png`,
+      new Blob([new Uint8Array([1])], { type: "image/png" }),
+      { contentType: "image/png" },
+    );
+}
+
 let plain: Actor;
 let enrolled: Actor;
 /** Same account as `enrolled`, but a token issued after the first factor only. */
@@ -112,9 +131,7 @@ describe("a user with no verified factor", () => {
   });
 
   it("can use their own private Storage prefix", async () => {
-    const { error } = await plain.client.storage
-      .from("wardrobe-originals")
-      .upload(`${plain.id}/allowed-${randomUUID()}.bin`, new Blob([new Uint8Array([1])]));
+    const { error } = await imageUpload(plain.client, plain.id, "allowed");
     expect(error).toBeNull();
   });
 });
@@ -151,9 +168,7 @@ describe("an MFA-enrolled account holding an aal1 token", () => {
   });
 
   it("cannot upload to its own private Storage prefix", async () => {
-    const { error } = await underAssured.storage
-      .from("wardrobe-originals")
-      .upload(`${enrolled.id}/blocked-${randomUUID()}.bin`, new Blob([new Uint8Array([1, 2, 3])]));
+    const { error } = await imageUpload(underAssured, enrolled.id, "blocked");
     expect(error).not.toBeNull();
   });
 
@@ -180,9 +195,7 @@ describe("the same account once it reaches aal2", () => {
   });
 
   it("uses its own private Storage again", async () => {
-    const { error } = await enrolled.client.storage
-      .from("wardrobe-originals")
-      .upload(`${enrolled.id}/allowed-${randomUUID()}.bin`, new Blob([new Uint8Array([9])]));
+    const { error } = await imageUpload(enrolled.client, enrolled.id, "allowed");
     expect(error).toBeNull();
   });
 });

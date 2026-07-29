@@ -22,7 +22,10 @@ export async function recordLegalAcceptance(
     p_privacy_version: PRIVACY_VERSION,
     p_source: source,
   });
-  if (error) throw new Error("legal_acceptance_write_failed");
+  // The provider's code rides along as `cause` so the route can log *why* the
+  // write failed. A missing function (schema drift) and a genuine outage are
+  // the same message to the user but need opposite fixes from an operator.
+  if (error) throw new Error("legal_acceptance_write_failed", { cause: error.code });
 }
 
 /**

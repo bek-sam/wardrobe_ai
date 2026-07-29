@@ -167,12 +167,17 @@ describe("feature usage counters for all five routes", () => {
       expect(data).toMatchObject({ allowed: true });
     }
 
-    const { data: counters } = await admin
+    // The counter column is `usage_count`; selecting a name the table does not
+    // have makes PostgREST return an error and no rows, which would leave every
+    // lookup below undefined and the assertions unreachable rather than failing
+    // honestly -- so the error is asserted too.
+    const { data: counters, error: countersError } = await admin
       .from("feature_usage_counters")
-      .select("feature, used")
+      .select("feature, usage_count")
       .eq("user_id", owner.id);
+    expect(countersError).toBeNull();
     const byFeature = new Map(
-      (counters ?? []).map((row) => [row.feature as string, row.used as number]),
+      (counters ?? []).map((row) => [row.feature as string, row.usage_count as number]),
     );
     expect(byFeature.get("stylist_generation")).toBe(1);
     // planning + packing both bill the planner feature.
