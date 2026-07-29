@@ -1,5 +1,7 @@
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { expect, test } from "./fixtures";
 
 import {
   adminClient,
@@ -51,11 +53,22 @@ test.describe("authenticated stylist", () => {
     await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
   }
 
+  // The composer is disabled while the conversation history loads and while a
+  // turn streams, both of which are real round trips, so readiness is waited
+  // for rather than assumed at the 5s default.
+  const COMPOSER_READY_TIMEOUT = 30_000;
+
   async function ask(page: Page, question: string) {
     const composer = page.getByLabel(/ask your stylist/i);
-    await expect(composer).toBeEnabled();
+    await expect(composer).toBeEnabled({ timeout: COMPOSER_READY_TIMEOUT });
     await composer.fill(question);
-    await page.getByRole("button", { name: /send message/i }).click();
+
+    // Send is the real readiness signal: ChatPanel enables it only once the
+    // composer has text *and* the styling context (its date) has loaded, so the
+    // textarea can be editable while the request would still be refused.
+    const send = page.getByRole("button", { name: /send message/i });
+    await expect(send).toBeEnabled({ timeout: COMPOSER_READY_TIMEOUT });
+    await send.click();
   }
 
   test("answers a lowercase item question and an insight, and keeps both on reload", async ({
@@ -66,7 +79,9 @@ test.describe("authenticated stylist", () => {
 
     // Chat is available on the account alone -- no OpenAI variable is set.
     await expect(page.getByRole("heading", { name: /your stylist/i })).toBeVisible();
-    await expect(page.getByLabel(/ask your stylist/i)).toBeEnabled();
+    await expect(page.getByLabel(/ask your stylist/i)).toBeEnabled({
+      timeout: COMPOSER_READY_TIMEOUT,
+    });
 
     // 1. Deliberately lowercase: routing must not depend on capitalisation.
     await ask(page, "do i own a blue blazer?");

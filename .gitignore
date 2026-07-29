@@ -12,5 +12,6 @@ test-results/
 !.env.example
 *.log
 data/
+.claude/settings.local.json
 NEW_FEATURES.md
 supabase/.temp/

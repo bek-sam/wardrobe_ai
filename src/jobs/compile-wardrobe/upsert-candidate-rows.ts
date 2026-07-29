@@ -1,5 +1,6 @@
 import type { GeneratedOutfitCandidate } from "@/lib/compilation/generate-outfit-candidates";
 
+import { FRESH_CANDIDATE_FIELDS } from "./fresh-candidate-fields.data";
 import type { AdminClient, ReusableCandidateFields } from "./types";
 
 export async function upsertCandidateRows(
@@ -30,6 +31,9 @@ export async function upsertCandidateRows(
         preference_match: candidate.preferenceMatch,
         variety: candidate.variety,
         total_score: candidate.totalScore,
+        // Defaults first so every row in the batch carries the same columns;
+        // a bulk upsert sends one column list and nulls the gaps otherwise.
+        ...FRESH_CANDIDATE_FIELDS,
         ...reusableByCombinationKey.get(candidate.combinationKey),
       })),
       { onConflict: "user_id,compiled_wardrobe_version,combination_key" },

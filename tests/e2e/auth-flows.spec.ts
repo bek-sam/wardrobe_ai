@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { expect, test, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { expect, test } from "./fixtures";
 
 import { adminClient, createDisposableUser, deleteDisposableUser, e2eSupabaseConfig } from "./seed";
 import { clearMailbox, extractAuthLink, waitForEmail } from "./mailpit";
@@ -105,12 +107,13 @@ test.describe("authentication", () => {
 
   test("resends a confirmation without revealing whether the account exists", async ({ page }) => {
     await page.goto("/check-email");
-    await page
-      .getByRole("group")
-      .click()
-      .catch(() => undefined);
+    // The resend form is inside a <details>. Opening it is one click on the
+    // summary — clicking the group as well toggled it straight back shut, and
+    // the field then never became visible.
     await page.locator("details summary").click();
-    await page.getByLabel("Email address").fill(`nobody-${randomUUID()}@example.com`);
+    const email = page.getByLabel("Email address");
+    await expect(email).toBeVisible();
+    await email.fill(`nobody-${randomUUID()}@example.com`);
     await page.getByRole("button", { name: /resend confirmation link/i }).click();
     await expect(page.getByText(/if that email needs confirming/i)).toBeVisible();
   });
@@ -128,7 +131,14 @@ test.describe("authentication", () => {
     await page.getByRole("button", { name: /log in securely/i }).click();
     await expect(page).toHaveURL(/\/wardrobe/);
 
-    await page.getByRole("button", { name: /^sign out$/i }).click();
+    // Both layouts ship a "Sign out": the sidebar's and the mobile top bar's,
+    // both in the DOM at once with only one shown. Filtering to the visible one
+    // keeps this working on either viewport, where naming a single container
+    // would pass on one project and hang on the other.
+    await page
+      .getByRole("button", { name: /^sign out$/i })
+      .filter({ visible: true })
+      .click();
     await expect(page).toHaveURL(/\/login/);
 
     // And the protected page is protected again.
@@ -201,7 +211,9 @@ test.describe("authentication", () => {
     await page.goto("/settings");
 
     const security = page.locator("#settings-security");
-    await expect(security.getByText(user.email)).toBeVisible();
+    // This section is populated from /api/account/security, so the first
+    // assertion waits on a real round trip rather than the 5s default.
+    await expect(security.getByText(user.email)).toBeVisible({ timeout: 30_000 });
     await expect(security.getByText(/confirmed/i).first()).toBeVisible();
     await expect(security.getByText(/email and password/i)).toBeVisible();
     await expect(
@@ -251,11 +263,17 @@ test.describe("authentication", () => {
 
     page.once("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: /^delete account$/i }).click();
-    await page.getByLabel("Deletion confirmation").fill("DELETE");
-    await page.getByLabel("Current password").fill(user.password);
-    await page.getByRole("button", { name: /permanently delete account/i }).click();
 
-    await expect(page).toHaveURL(/\/account-deleted/);
+    // Scoped to the deletion group: Settings also carries a "Current password"
+    // field for changing the password, and an unscoped label matches both.
+    const deletion = page.getByRole("group", { name: /confirm account deletion/i });
+    await deletion.getByLabel("Deletion confirmation").fill("DELETE");
+    await deletion.getByLabel("Current password").fill(user.password);
+    await deletion.getByRole("button", { name: /permanently delete account/i }).click();
+
+    // Deletion removes the Auth user and enqueues every stored object before it
+    // redirects, so this waits on real work rather than the 5s default.
+    await expect(page).toHaveURL(/\/account-deleted/, { timeout: 30_000 });
     // The copy must separate immediate removal from pending file cleanup.
     await expect(page.getByText(/being erased from storage/i)).toBeVisible();
 

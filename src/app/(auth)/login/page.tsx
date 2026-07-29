@@ -1,8 +1,9 @@
+import { AuthEmailDivider } from "@/components/ui/AuthEmailDivider";
 import { AuthFeedback } from "@/components/ui/AuthFeedback";
 import { OAuthGoogleButton } from "@/components/ui/OAuthGoogleButton";
 import type { SearchParamValue } from "@/components/ui/search-param-value";
 import { safeReturnTo } from "@/lib/auth/redirects";
-import { isSupabaseConfigured } from "@/lib/env/client";
+import { clientEnv, isSupabaseConfigured } from "@/lib/env/client";
 
 import { LoginFooterLinks } from "./LoginFooterLinks";
 import { LoginForm } from "./LoginForm";
@@ -29,9 +30,7 @@ export default async function LoginPage({ searchParams }: { searchParams: LoginS
       </div>
       <OAuthGoogleButton returnTo={returnTo} />
       <AuthFeedback error={query.error} notice={query.notice} />
-      <div className="auth-divider">
-        <span>or use email</span>
-      </div>
+      <AuthEmailDivider shown={clientEnv.googleAuthEnabled} />
       <LoginForm configured={configured} returnTo={returnTo} />
       <LoginFooterLinks configured={configured} />
     </section>

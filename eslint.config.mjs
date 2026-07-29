@@ -11,6 +11,11 @@ export default defineConfig([
     "coverage/**",
     "playwright-report/**",
     "test-results/**",
+    // Written by `npx supabase start` (the bundled edge runtime). Generated,
+    // gitignored, and not ours to lint — but ESLint's flat config does not read
+    // nested .gitignore files, so without this the documented local workflow
+    // (`supabase start`, then `npm run check`) fails on vendored output.
+    "supabase/.temp/**",
     "src/**/*.jsx",
     "src/**/*.js",
     "scripts/**/*.mjs",

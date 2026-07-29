@@ -96,6 +96,13 @@ Route allocates `import_jobs` row + signed upload path → browser uploads direc
 
 Resolve user/preferences/date/location/candidates → forecast → deterministic constraints → filter out archived/deleted/unavailable/laundry/weather-incompatible items → score remaining candidates with centrally configured weights → stylist gets compact exact-ID candidate set → validate result against ownership/availability/role/foundation rules → optionally persist via transactional RPC (`save_generated_outfit`, `save_generated_plan`, `save_generated_week`, etc.).
 
+## Claude Code tooling (`.claude/`)
+
+- `settings.json` (committed) wires two hooks on every `Edit`/`Write`: `hooks/guard-paths.sh` refuses writes to `.env*` and to **committed** migrations (uncommitted ones stay editable), and `hooks/format-and-lint.sh` runs prettier then eslint, failing the write when a rule breaks — this is what surfaces the 50-line `max-lines` rule immediately.
+- `/db-check` runs local Supabase + integration + E2E, the suites `check:quality` does not cover.
+- `@wardrobe-review` is a reviewer carrying this repo's RLS, agent, and structure invariants.
+- `settings.local.json` is gitignored and holds personal permission overrides only.
+
 ## Code style
 
 **Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
@@ -130,4 +137,6 @@ Folder conventions when a file grows past the limit:
 - Unit tests: Vitest + jsdom, files under `tests/unit/*.test.ts` plus a couple of top-level `tests/*.test.ts`. `tests/setup.ts` is the global setup; `tests/unit/fixtures.ts` holds shared fixtures, and `tests/unit/auth-test-env.ts` sets the auth environment that must be in place _before_ an auth route module is imported. Path alias `@` → `src`.
 - `tests/support/totp.ts` is a test-only RFC 6238 generator used by the MFA integration and E2E suites so factors are enrolled for real rather than faked.
 - E2E: Playwright, `tests/e2e/*.spec.ts`, chromium + mobile projects, dev server auto-started against `http://127.0.0.1:3000`.
+- **The authenticated E2E specs share one account and are order-dependent while `fullyParallel` is on.** A failure that only reproduces under parallel execution is usually this, not the code under test — re-run the single spec before chasing it. Fixing it properly means a per-worker account, not a retry.
+- **Auth forms need a native (pre-hydration) fallback.** A submit that lands before hydration goes through the browser's own form handling, which strips the query string and silently loses `returnTo`. Any form carrying state through the query must keep it in a hidden field or the action URL, and be tested with JS disabled.
 - The `.agents/skills/*` directory (`import-clothes`, `generate-outfits`) contains **development-time automation instructions for the legacy local-JSON workflow** — unrelated to the runtime agents in `src/lib/ai/agents`. Don't confuse the two when asked about "agents."

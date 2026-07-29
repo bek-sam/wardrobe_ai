@@ -76,15 +76,41 @@ describe("RLS: wardrobe-compilation tables", () => {
 });
 
 describe("request_wardrobe_recompilation()", () => {
+  /**
+   * A user of its own, because inserting a wardrobe item fires
+   * mark_wardrobe_compilation_dirty, which enqueues a compilation job by
+   * itself. Sharing userA with the RLS block above would start this sequence
+   * with a job already queued, and the first call would correctly report
+   * already_running before it ever had the chance to queue one.
+   */
+  let recompiled: TestUser;
+
+  beforeAll(async () => {
+    recompiled = await createTestUser(admin);
+    // One item, so wardrobe_compilation_state exists for the up_to_date case
+    // below to update -- then retire the job that same insert queued, leaving
+    // the user dirty with nothing outstanding.
+    await insertWardrobeItem(admin, recompiled.id);
+    await admin
+      .from("wardrobe_compilation_jobs")
+      .update({ status: "complete" })
+      .eq("user_id", recompiled.id)
+      .in("status", ["queued", "running"]);
+  });
+
+  afterAll(async () => {
+    await deleteTestUser(admin, recompiled.id);
+  });
+
   it("queues a job for a dirty/never-compiled user", async () => {
-    const { data, error } = await userA.client.rpc("request_wardrobe_recompilation");
+    const { data, error } = await recompiled.client.rpc("request_wardrobe_recompilation");
     expect(error).toBeNull();
     expect(data).toMatchObject({ status: "queued" });
     expect(typeof (data as { job_id: string }).job_id).toBe("string");
   });
 
   it("debounces: a second call while the job is still queued reports already_running", async () => {
-    const { data, error } = await userA.client.rpc("request_wardrobe_recompilation");
+    const { data, error } = await recompiled.client.rpc("request_wardrobe_recompilation");
     expect(error).toBeNull();
     expect(data).toMatchObject({ status: "already_running" });
   });
@@ -93,7 +119,7 @@ describe("request_wardrobe_recompilation()", () => {
     const { data, error } = await admin
       .from("wardrobe_compilation_jobs")
       .select("id")
-      .eq("user_id", userA.id)
+      .eq("user_id", recompiled.id)
       .in("status", ["queued", "running"]);
     expect(error).toBeNull();
     expect(data?.length).toBe(1);
@@ -103,7 +129,7 @@ describe("request_wardrobe_recompilation()", () => {
     const { data: activeJob } = await admin
       .from("wardrobe_compilation_jobs")
       .select("id")
-      .eq("user_id", userA.id)
+      .eq("user_id", recompiled.id)
       .in("status", ["queued", "running"])
       .single();
 
@@ -114,9 +140,9 @@ describe("request_wardrobe_recompilation()", () => {
     await admin
       .from("wardrobe_compilation_state")
       .update({ dirty_since: null, compiled_wardrobe_version: "v1" })
-      .eq("user_id", userA.id);
+      .eq("user_id", recompiled.id);
 
-    const { data, error } = await userA.client.rpc("request_wardrobe_recompilation");
+    const { data, error } = await recompiled.client.rpc("request_wardrobe_recompilation");
     expect(error).toBeNull();
     expect(data).toEqual({ status: "up_to_date", job_id: null });
   });
@@ -131,9 +157,9 @@ describe("request_wardrobe_recompilation()", () => {
       await admin
         .from("wardrobe_compilation_state")
         .update({ dirty_since: new Date().toISOString() })
-        .eq("user_id", userA.id);
+        .eq("user_id", recompiled.id);
 
-      const { data, error } = await userA.client.rpc("request_wardrobe_recompilation");
+      const { data, error } = await recompiled.client.rpc("request_wardrobe_recompilation");
       if (error) {
         expect(error.code).toBe("PT429");
         rateLimited = true;
