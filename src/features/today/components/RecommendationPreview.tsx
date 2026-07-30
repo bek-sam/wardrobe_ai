@@ -1,30 +1,25 @@
-import { Badge } from "@/components/ui/Badge";
+import { previewLabel } from "./preview-label";
+import { RecommendationPreviewTags } from "./RecommendationPreviewTags";
 import type { TodayPreviewInfo } from "./today.types";
 
 export function RecommendationPreview({
   preview,
   previewImageUrl,
+  previewStatus,
   previewRequestBusy,
   previewNotice,
   onRequestPreview,
 }: {
   preview: TodayPreviewInfo;
   previewImageUrl: string | null;
+  previewStatus: string | null;
   previewRequestBusy: boolean;
   previewNotice: string | null;
   onRequestPreview: () => void;
 }) {
   return (
     <div className="recommendation-preview">
-      {preview.styleTags.length ? (
-        <div className="recommendation-preview__tags">
-          {preview.styleTags.map((tag) => (
-            <Badge key={tag} tone="outline">
-              {tag}
-            </Badge>
-          ))}
-        </div>
-      ) : null}
+      <RecommendationPreviewTags styleTags={preview.styleTags} />
       {previewImageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -32,18 +27,21 @@ export function RecommendationPreview({
           className="recommendation-preview__image"
           src={previewImageUrl}
         />
-      ) : preview.status === "queued" || preview.status === "generating" ? (
+      ) : previewRequestBusy ? (
         <p className="recommendation-preview__status">Modeled preview is generating…</p>
-      ) : preview.status === "failed" ? (
-        <p className="recommendation-preview__status">The last preview attempt failed.</p>
       ) : (
+        // Every state short of `ready` stays actionable. A queued job is only
+        // drained by a scheduler that need not exist or by this control, so
+        // hiding it here is what stranded auto-enqueued previews on a
+        // "generating…" that nothing was advancing -- and `failed` offered no
+        // way back at all. Enqueuing is deduplicated server-side, so pressing
+        // this against an existing job resumes it rather than duplicating it.
         <button
           className="recommendation-preview__request"
-          disabled={previewRequestBusy}
           onClick={onRequestPreview}
           type="button"
         >
-          {previewRequestBusy ? "Requesting…" : "Generate a modeled preview"}
+          {previewLabel(previewStatus)}
         </button>
       )}
       {previewNotice ? <small>{previewNotice}</small> : null}

@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { fetchOutfitPreviewUrl, requestOutfitPreview } from "./fetch-outfit-preview";
+import { fetchOutfitPreviewUrl } from "./fetch-outfit-preview";
+import { requestAndProcessPreview } from "./request-and-process-preview";
+
+type LocalPreview = { candidateId: string; status: string; notice: string | null };
 
 export function useOutfitPreview(candidateId: string | null, status: string | null) {
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [previewRequestBusy, setPreviewRequestBusy] = useState(false);
-  const [previewNotice, setPreviewNotice] = useState<string | null>(null);
+  // `status` describes the recommendation as it was generated. Processing moves
+  // it forward from here and nothing re-fetches the recommendation, so what was
+  // observed locally wins -- but it is tagged with the candidate it belongs to,
+  // which is what stops a stale status leaking onto the next recommendation.
+  const [local, setLocal] = useState<LocalPreview | null>(null);
+  const current = local && local.candidateId === candidateId ? local : null;
+  const previewStatus = current?.status ?? status;
+  const previewNotice = current?.notice ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       setPreviewImageUrl(null);
-      setPreviewNotice(null);
-      if (!candidateId || status !== "ready") return;
+      if (!candidateId || previewStatus !== "ready") return;
       try {
         setPreviewImageUrl(await fetchOutfitPreviewUrl(candidateId, controller.signal));
       } catch {
@@ -20,22 +29,26 @@ export function useOutfitPreview(candidateId: string | null, status: string | nu
       }
     })();
     return () => controller.abort();
-  }, [candidateId, status]);
+  }, [candidateId, previewStatus]);
 
   const requestPreview = useCallback(async () => {
     if (!candidateId) return;
     setPreviewRequestBusy(true);
-    setPreviewNotice(null);
+    setLocal({ candidateId, status: "queued", notice: null });
     try {
-      setPreviewNotice(await requestOutfitPreview(candidateId));
+      // Enqueue *and* process. Enqueuing alone leaves the job for a scheduler
+      // that need not exist, which stranded the card on "generating…" with no
+      // control to retry; the stylist path already pairs the two calls.
+      const result = await requestAndProcessPreview(candidateId);
+      setLocal({ candidateId, status: result.status, notice: result.notice });
     } catch (error) {
-      setPreviewNotice(
-        error instanceof Error ? error.message : "The preview could not be requested.",
-      );
+      const message =
+        error instanceof Error ? error.message : "The preview could not be requested.";
+      setLocal({ candidateId, status: "failed", notice: message });
     } finally {
       setPreviewRequestBusy(false);
     }
   }, [candidateId]);
 
-  return { previewImageUrl, previewRequestBusy, previewNotice, requestPreview };
+  return { previewImageUrl, previewStatus, previewRequestBusy, previewNotice, requestPreview };
 }

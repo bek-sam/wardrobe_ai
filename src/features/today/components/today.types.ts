@@ -72,6 +72,7 @@ export type TodayLookDetailsProps = {
   recommendation: TodayRecommendation;
   recommendationWeather: WeatherView | null;
   previewImageUrl: string | null;
+  previewStatus: string | null;
   previewRequestBusy: boolean;
   previewNotice: string | null;
   onRequestPreview: () => void;

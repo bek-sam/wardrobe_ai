@@ -30,14 +30,21 @@ export async function POST(request: Request) {
 
     const requestedStatus = await requestRecompilation(supabase);
     if (requestedStatus === "up_to_date") return ok({ status: "up_to_date" as const });
+
+    // `already_running` only means a row exists in queued/running -- it does
+    // not mean the job is leased. Returning early on it left a job that was
+    // queued but never claimed unreachable forever: the interactive path is the
+    // only thing draining the queue in a deployment without a scheduler, and it
+    // refused to touch precisely the jobs that needed draining. The claim RPC
+    // is the authority on whether work is available -- it takes a job only when
+    // the lease is free -- so a genuinely leased job still yields nothing here.
+    const result = await claimAndRunJob(supabase, viewer.id);
+    if (result) return ok(result, { status: 202 });
     if (requestedStatus === "already_running") {
       return ok({ status: "running" as const }, { status: 202 });
     }
 
-    const result = await claimAndRunJob(supabase, viewer.id);
-    if (!result) return ok({ status: "queued" as const }, { status: 202 });
-
-    return ok(result, { status: 202 });
+    return ok({ status: "queued" as const }, { status: 202 });
   } catch (error) {
     return routeError(error);
   }

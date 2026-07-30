@@ -6,6 +6,7 @@ export function TodayLookSection({
   recommendation,
   recommendationWeather,
   previewImageUrl,
+  previewStatus,
   previewRequestBusy,
   previewNotice,
   onRequestPreview,
@@ -16,6 +17,7 @@ export function TodayLookSection({
   recommendation: TodayRecommendation;
   recommendationWeather: WeatherView | null;
   previewImageUrl: string | null;
+  previewStatus: string | null;
   previewRequestBusy: boolean;
   previewNotice: string | null;
   onRequestPreview: () => void;
@@ -33,6 +35,7 @@ export function TodayLookSection({
         previewImageUrl={previewImageUrl}
         previewNotice={previewNotice}
         previewRequestBusy={previewRequestBusy}
+        previewStatus={previewStatus}
         recommendation={recommendation}
         recommendationWeather={recommendationWeather}
         saving={saving}

@@ -41,7 +41,14 @@ export async function consumeAuthRateLimit(
       p_limit: rule.limit,
       p_window_seconds: rule.windowSeconds,
     });
-    if (error) return { allowed: false, retryAfterSeconds: 60 };
+    // Code only: the identifier hash and the caller's address must not be
+    // logged. Failing closed is correct, but silently is not — an unreachable
+    // or broken function locks every account out and looks exactly like
+    // legitimate throttling from the outside.
+    if (error) {
+      console.error("auth_rate_limit_unavailable", { action, scope: rule.scope, code: error.code });
+      return { allowed: false, retryAfterSeconds: 60 };
+    }
 
     const result = data as { allowed?: boolean; retry_after_seconds?: number } | null;
     if (!result?.allowed) {

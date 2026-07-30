@@ -25,6 +25,7 @@ export function TodayRecommendationArea({
         previewImageUrl={state.previewImageUrl}
         previewNotice={state.previewNotice}
         previewRequestBusy={state.previewRequestBusy}
+        previewStatus={state.previewStatus}
         recommendation={state.recommendation}
         recommendationWeather={state.recommendation?.weather ?? state.weather}
         saving={state.saving}

@@ -1,5 +1,6 @@
 import { RecommendationPreview } from "./RecommendationPreview";
 import { TodayLookActions } from "./TodayLookActions";
+import { TodayLookHeader } from "./TodayLookHeader";
 import { TodayLookNotes } from "./TodayLookNotes";
 import { TodayLookReasons } from "./TodayLookReasons";
 import { weatherReasons } from "./today-weather-copy";
@@ -9,6 +10,7 @@ export function TodayLookDetails({
   recommendation,
   recommendationWeather,
   previewImageUrl,
+  previewStatus,
   previewRequestBusy,
   previewNotice,
   onRequestPreview,
@@ -18,13 +20,10 @@ export function TodayLookDetails({
 }: TodayLookDetailsProps) {
   return (
     <div className="today-look__details">
-      <p className="eyebrow">
-        {recommendation.occasion ?? "Open day"}
-        {recommendationWeather?.locationName ? ` · ${recommendationWeather.locationName}` : ""}
-        {` · ${Math.round(recommendation.confidence * 100)}% confidence`}
-      </p>
-      <h2 id="today-look-title">{recommendation.title}</h2>
-      <p className="today-look__summary">{recommendation.explanation}</p>
+      <TodayLookHeader
+        recommendation={recommendation}
+        recommendationWeather={recommendationWeather}
+      />
       {recommendation.preview ? (
         <RecommendationPreview
           onRequestPreview={onRequestPreview}
@@ -32,6 +31,7 @@ export function TodayLookDetails({
           previewImageUrl={previewImageUrl}
           previewNotice={previewNotice}
           previewRequestBusy={previewRequestBusy}
+          previewStatus={previewStatus}
         />
       ) : null}
       <TodayLookReasons

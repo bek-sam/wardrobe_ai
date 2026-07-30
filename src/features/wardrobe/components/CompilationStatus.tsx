@@ -11,7 +11,10 @@ export function CompilationStatus({ configured }: { configured: boolean }) {
   if (!configured) return null;
 
   const jobStatus = status?.latest_job_status ?? null;
-  const isRunning = recompiling || jobStatus === "queued" || jobStatus === "running";
+  // A queued job is pending, not in flight. Treating it as running disabled the
+  // one control that can drain it and reported "Recompiling…" for a job nothing
+  // was working on -- so a queue with no worker looked like perpetual progress.
+  const isRunning = recompiling || jobStatus === "running";
   const isFailed = !isRunning && jobStatus === "failed";
 
   return (
