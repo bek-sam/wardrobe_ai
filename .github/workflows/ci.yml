@@ -101,6 +101,11 @@ jobs:
       # the local URL/keys plus the auth test secrets to the dev server it
       # starts, so the authenticated and auth-flow specs run for real rather
       # than skipping themselves. Email is read from the local Mailpit.
+      #
+      # It also sets OUTFIT_VISUALIZATION_PROVIDER=fake, so the Outfit Studio
+      # try-on spec exercises the real durable job, QA gate, localization, and
+      # storage path against a deterministic network-free image provider. No
+      # OpenAI secret is passed here and no paid model call is ever made.
       - run: npm run test:e2e -- --project=chromium
         env:
           NEXT_PUBLIC_APP_URL: http://127.0.0.1:3000

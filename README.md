@@ -20,7 +20,8 @@ The original Vite prototype is still available through the `legacy:*` scripts wh
 - Open-Meteo geocoding/forecast context and deterministic clothing constraints.
 - Deterministic candidate filtering/scoring before structured OpenAI stylist and planner calls.
 - Exact-owned-item outfit validation, atomic outfit/planner/wear RPCs, swaps, feedback, and insights.
-- Responsive public, auth, Today, Wardrobe, Import, Stylist, Planner, Outfits, Insights, and Settings experiences.
+- Outfit Studio: three meaningfully different looks (Safe, Fresh, Statement) from owned garments, an interactive flat lay built from real cut-outs, and opt-in identity-preserving AI try-on with a structured quality gate, tappable garment hotspots, keyboard-equivalent garment chips, locks, swaps, remix, and a privately labelled download. See [`docs/outfit-studio.md`](docs/outfit-studio.md).
+- Responsive public, auth, Today, Wardrobe, Import, Studio, Stylist, Planner, Outfits, Insights, and Settings experiences.
 - Vitest unit tests, Playwright smoke tests, ESLint, Prettier, strict TypeScript, and GitHub Actions CI.
 
 AI and data-backed features fail closed until their required environment variables are configured. No sample wardrobe is presented as user data.
@@ -140,6 +141,7 @@ Interactive routes can also process one owned import or research job, but produc
 ## Architecture and trust
 
 - [Architecture](docs/architecture.md)
+- [Functional-boundary system design](docs/system-design-functional-boundaries.md)
 - [Runtime agents and deterministic services](docs/agents.md)
 - [Data model](docs/data-model.md)
 - [Storage and RLS security](docs/storage-security.md)

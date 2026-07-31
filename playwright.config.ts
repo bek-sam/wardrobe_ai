@@ -65,6 +65,14 @@ export default defineConfig({
       // belongs in a checked-in config file.
       AUTH_ACTION_SECRET: "e2e-auth-action-secret-0000000000000000000000000000000000",
       AUTH_RATE_LIMIT_HMAC_SECRET: "e2e-rate-limit-secret-0000000000000000000000000000000000",
+      // Outfit Studio try-on runs against the deterministic, network-free fake
+      // provider. It produces a real portrait PNG and typed QA/localization
+      // results, so the whole pipeline is exercised without an OpenAI key and
+      // without a paid call. Inline processing stands in for the scheduler that
+      // a dev server does not have.
+      OUTFIT_VISUALIZATION_PROVIDER: "fake",
+      OUTFIT_VISUALIZATION_FAKE_OUTCOME: "ready",
+      VISUALIZATION_INLINE_PROCESSING_ENABLED: "true",
       // CAPTCHA and Google stay off: neither can be driven without a live
       // third-party service, and their absence is itself asserted.
       NEXT_PUBLIC_CAPTCHA_ENABLED: "false",

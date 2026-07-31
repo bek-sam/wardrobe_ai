@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { IMAGE_CAPABILITY_PROFILES } from "@/lib/ai/visualization-provider/capabilities.data";
+
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 const optionalString = z.preprocess(emptyToUndefined, z.string().min(1).optional());
 const optionalUrl = z.preprocess(emptyToUndefined, z.url().optional());
@@ -69,6 +71,38 @@ export const serverEnvironmentSchema = z.object({
   PREVIEW_DAILY_LIMIT: optionalPositiveInteger(30),
   PREVIEW_MAX_QUEUED_PER_USER: optionalPositiveInteger(5),
   PREVIEW_FREQUENTLY_SUGGESTED_THRESHOLD: optionalPositiveInteger(3),
+
+  // ---------------------------------------------------------------------
+  // Outfit Studio / AI try-on visualizations.
+  // ---------------------------------------------------------------------
+  // Structured vision model that runs the quality gate and hotspot
+  // localization. Unset means try-on fails closed with a typed 503 — it never
+  // degrades to serving an unchecked image.
+  OPENAI_VISUALIZATION_QA_MODEL: optionalString,
+  // Capability profile, not a model name: which parameters the configured
+  // image model actually accepts. Change only after an authorized
+  // non-production smoke test. See docs/outfit-studio.md.
+  OPENAI_IMAGE_CAPABILITY_PROFILE: z.enum(IMAGE_CAPABILITY_PROFILES).default("auto_fidelity"),
+  // "fake" is a development/test-only deterministic provider. Production must
+  // leave this at "openai"; the fake is never a silent fallback.
+  OUTFIT_VISUALIZATION_PROVIDER: z.enum(["openai", "fake"]).default("openai"),
+  OUTFIT_VISUALIZATION_FAKE_OUTCOME: optionalString,
+  OUTFIT_VISUALIZATION_WORKER_SECRET: optionalString,
+  // The paid try-on budget is deliberately NOT here: request_outfit_
+  // visualization() is callable by `authenticated`, so its daily limit lives
+  // in feature_limits and its queue/rate caps are constants inside the
+  // function. An env-driven limit would have to be passed in as an argument,
+  // which a client could then supply itself.
+  //
+  // Identity-photo confirmation runs a paid vision call, so it is budgeted
+  // like every other model-backed route rather than being free to replay.
+  IDENTITY_ASSESSMENT_DAILY_LIMIT: optionalPositiveInteger(10),
+  IDENTITY_ASSESSMENT_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(3),
+  VISUALIZATION_DOWNLOAD_RATE_LIMIT_PER_MINUTE: optionalPositiveInteger(20),
+  // Lets an owning user's request process their own queued job inline instead
+  // of waiting for a scheduler. Off by default: a long paid image call does
+  // not belong in a normal route-handler lifecycle.
+  VISUALIZATION_INLINE_PROCESSING_ENABLED: booleanFlag,
 
   // ---------------------------------------------------------------------
   // Authentication. Provider secrets (Google client secret, Turnstile secret,

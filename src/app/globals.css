@@ -4625,7 +4625,9 @@ textarea:focus-visible {
     left: 12px;
     z-index: 80;
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    /* Six destinations. At the 320px minimum width each target is still ~48px
+       wide, which keeps it above the 44px touch-target floor. */
+    grid-template-columns: repeat(6, 1fr);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 18px;
     padding: 5px;
@@ -5384,5 +5386,848 @@ textarea:focus-visible {
   }
   .security-actions .button {
     width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Outfit Studio — three-variant recommendations, flat lay, and AI try-on.
+   Extends the existing paper/ink/rust tokens rather than introducing a second
+   visual language. Deliberately no neon AI gradient: the try-on should read as
+   editorial and tactile, like the rest of the app.
+   --------------------------------------------------------------------------- */
+
+.studio {
+  display: grid;
+  gap: 24px;
+  /* 12-column desktop: 3 controls / 6 preview / 3 detail. */
+  grid-template-columns: 3fr 6fr 3fr;
+  align-items: start;
+}
+.studio__rail {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+  position: sticky;
+  top: 24px;
+}
+.studio__main {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+}
+
+.composer {
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.3);
+}
+.composer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.composer-chips {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.composer-chips legend {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 620;
+}
+.composer-chips__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.composer-chip {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 13px;
+  color: var(--ink-soft);
+  background: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  transition:
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+.composer-chip--on {
+  border-color: var(--rust);
+  border-width: 2px;
+  color: var(--rust-dark);
+  background: rgba(113, 59, 53, 0.09);
+  font-weight: 640;
+}
+.composer-chip:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+
+/* --- Variant selector ---------------------------------------------------- */
+
+.variant-tabs {
+  display: grid;
+  gap: 8px;
+}
+.variant-tab {
+  min-height: 56px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 11px 15px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.34);
+  transition:
+    border-color 200ms ease,
+    transform 200ms ease;
+}
+.variant-tab--on {
+  border-color: var(--rust);
+  border-left-width: 4px;
+  background: rgba(113, 59, 53, 0.07);
+}
+.variant-tab:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+.variant-tab__label {
+  font-family: Georgia, serif;
+  font-size: 17px;
+}
+.variant-tab__description {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* --- Stage --------------------------------------------------------------- */
+
+.studio-stage {
+  display: grid;
+  gap: 16px;
+}
+.stage-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.34);
+}
+.stage-tab {
+  min-height: 44px;
+  display: grid;
+  gap: 1px;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: transparent;
+  transition: background-color 200ms ease;
+}
+.stage-tab--on {
+  color: var(--paper-light);
+  background: var(--ink);
+}
+.stage-tab:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+.stage-tab__label {
+  font-size: 13px;
+  font-weight: 640;
+}
+.stage-tab__hint {
+  font-size: 10px;
+  opacity: 0.72;
+}
+
+/* --- Flat lay ------------------------------------------------------------ */
+
+.flat-lay__grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+}
+.flat-lay__piece {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 11px;
+  background: rgba(255, 255, 255, 0.42);
+  transition: border-color 200ms ease;
+}
+.flat-lay__piece--selected {
+  border-color: var(--rust);
+  border-width: 2px;
+  padding: 10px;
+}
+.flat-lay__figure {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: 0;
+  background: var(--paper-soft);
+  overflow: hidden;
+}
+.flat-lay__figure img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.flat-lay__figure:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+.flat-lay__placeholder {
+  padding: 8px;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+.flat-lay__lock {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 10px;
+  font-weight: 640;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.flat-lay__lock--on {
+  border-color: var(--gold);
+  color: #6b4d1d;
+  background: #ede0c6;
+}
+.flat-lay__lock:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+.flat-lay__caption {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.flat-lay__caption span {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.flat-lay__caption strong {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+/* --- Try-on stage -------------------------------------------------------- */
+
+.tryon__frame {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  max-height: 74vh;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-soft);
+  overflow: hidden;
+}
+.tryon__image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+  animation: tryon-reveal 240ms ease-out;
+}
+@keyframes tryon-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.99);
+  }
+}
+.tryon__hotspots {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.tryon__hotspot {
+  position: absolute;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  transition:
+    border-color 200ms ease,
+    background-color 200ms ease;
+}
+.tryon__hotspot--active {
+  border-color: var(--rust);
+  background: rgba(113, 59, 53, 0.12);
+}
+.tryon__hotspot-chip {
+  position: absolute;
+  top: -10px;
+  left: 0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--paper-light);
+  background: var(--rust);
+  font-size: 10px;
+  font-weight: 640;
+  white-space: nowrap;
+}
+.tryon-disclaimer {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+}
+.tryon-empty,
+.tryon-ready {
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+}
+.tryon-ready {
+  justify-items: stretch;
+}
+.tryon-empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 34px 20px;
+  text-align: center;
+}
+.tryon-empty__notice {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tryon-ready__actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* --- Progress, notices, feedback ----------------------------------------- */
+
+.tryon-progress {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 26px;
+  background: rgba(255, 255, 255, 0.34);
+}
+.tryon-progress__steps {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tryon-progress__step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.tryon-progress__marker {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+.tryon-progress__step--done {
+  color: var(--ink-soft);
+}
+.tryon-progress__step--done .tryon-progress__marker {
+  border-color: var(--sage);
+  background: var(--sage);
+}
+.tryon-progress__step--active {
+  color: var(--ink);
+  font-weight: 640;
+}
+.tryon-progress__step--active .tryon-progress__marker {
+  border-color: var(--rust);
+  background: var(--rust);
+}
+.tryon-progress__note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.tryon-notice {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 15px 17px;
+}
+.tryon-notice--error {
+  border-color: rgba(139, 50, 44, 0.24);
+  background: rgba(181, 83, 71, 0.08);
+}
+.tryon-notice--stale {
+  border-color: rgba(141, 109, 57, 0.3);
+  background: rgba(237, 224, 198, 0.5);
+}
+.tryon-notice__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 640;
+}
+.tryon-notice__detail {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.tryon-notice__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tryon-feedback {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 15px;
+}
+.tryon-feedback__label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 620;
+}
+.tryon-feedback__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tryon-feedback__ack {
+  min-height: 16px;
+  margin: 0;
+  color: var(--sage);
+  font-size: 11px;
+}
+
+/* --- Garment chips and detail -------------------------------------------- */
+
+.garment-chips {
+  display: grid;
+  gap: 8px;
+}
+.garment-chips__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.garment-chips__list {
+  display: flex;
+  gap: 7px;
+  margin: 0;
+  padding: 2px;
+  overflow-x: auto;
+  list-style: none;
+}
+.garment-chip {
+  min-height: 44px;
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 6px 13px;
+  text-align: left;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.4);
+  transition: border-color 200ms ease;
+}
+.garment-chip--selected {
+  border-color: var(--rust);
+  border-width: 2px;
+  padding: 5px 12px;
+  background: rgba(113, 59, 53, 0.08);
+}
+.garment-chip:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+.garment-chip__role {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.garment-chip__name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.garment-detail {
+  position: relative;
+  display: grid;
+  gap: 15px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  background: var(--paper-light);
+  box-shadow: var(--shadow-soft);
+}
+.garment-detail__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+.garment-detail__head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding-right: 40px;
+}
+.garment-detail__cutout {
+  width: 62px;
+  height: 62px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+  background: var(--paper-soft);
+}
+.garment-detail__role {
+  margin: 0 0 3px;
+  color: var(--rust);
+  font-size: 9px;
+  font-weight: 720;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.garment-detail__name {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.25;
+}
+.garment-detail__facts {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+.garment-detail__facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+.garment-detail__facts dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+.garment-detail__facts dd {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 560;
+  text-align: right;
+}
+.garment-detail__confidence {
+  margin: 0;
+  color: var(--gold);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.garment-detail__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.layer-chooser,
+.swap-picker {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: var(--paper-light);
+  box-shadow: var(--shadow-float);
+}
+.layer-chooser {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  z-index: 3;
+  width: min(280px, calc(100% - 32px));
+  transform: translateX(-50%);
+}
+.layer-chooser__title,
+.swap-picker__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 640;
+}
+.layer-chooser__list,
+.swap-picker__list {
+  display: grid;
+  gap: 5px;
+  max-height: 260px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.layer-chooser__list button,
+.swap-picker__list button {
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.5);
+}
+.layer-chooser__list button:focus-visible,
+.swap-picker__list button:focus-visible {
+  outline: 2px solid var(--rust);
+  outline-offset: 2px;
+}
+.layer-chooser__role {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.layer-chooser__name {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* --- Why panel, identity gate, action dock, notices ---------------------- */
+
+.why-panel {
+  display: grid;
+  gap: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.34);
+}
+.why-panel__title {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+.why-panel__note {
+  margin: 0;
+  color: var(--rust-dark);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+}
+.why-panel__reasons,
+.why-panel__warnings {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.why-panel__warnings {
+  padding: 0;
+  list-style: none;
+}
+.why-panel__warnings li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #7a5a1f;
+}
+.why-panel__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0;
+}
+
+.identity-step {
+  display: grid;
+  gap: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 22px;
+  background: rgba(255, 255, 255, 0.34);
+}
+.identity-step h3 {
+  margin: 0;
+  font-family: Georgia, serif;
+  font-size: 21px;
+  font-weight: 400;
+}
+.identity-step__lead {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.identity-step__guidance {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0 0 0 17px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.identity-step__preview {
+  width: 100%;
+  max-width: 220px;
+  border-radius: var(--radius-sm);
+  justify-self: center;
+}
+.identity-step__note {
+  margin: 0;
+  color: var(--gold);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.identity-step__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.action-dock {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.44);
+}
+
+.studio-notices {
+  display: grid;
+  gap: 9px;
+}
+.studio-notices__context,
+.studio-notices__status,
+.studio-notices__locks,
+.studio-notices__empty {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.studio-notices__empty {
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 22px;
+  color: var(--muted);
+  text-align: center;
+}
+.studio-notices__locks {
+  color: var(--gold);
+  font-size: 12px;
+}
+
+/* --- Responsive handoff --------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .studio {
+    /* Collapse the explanation rail before shrinking the image. */
+    grid-template-columns: 4fr 5fr 3fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .studio {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .studio__rail {
+    position: static;
+  }
+  /* Image first on tablet and below. */
+  .studio__main {
+    order: -1;
+  }
+}
+
+@media (max-width: 720px) {
+  .studio {
+    gap: 18px;
+  }
+  .action-dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    background: var(--paper);
+    box-shadow: 0 -10px 30px rgba(45, 35, 25, 0.12);
+  }
+  .action-dock .button {
+    flex: 1 1 44%;
+  }
+  .garment-detail {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    max-height: 82vh;
+    overflow-y: auto;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  }
+  .tryon__frame {
+    max-height: 62vh;
+  }
+}
+
+@media (max-width: 460px) {
+  .composer {
+    padding: 16px;
+  }
+  .flat-lay__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .action-dock .button {
+    flex: 1 1 100%;
+  }
+  /* Chip hit targets are never reduced, only their surrounding spacing. */
+  .garment-chip {
+    padding: 6px 11px;
   }
 }

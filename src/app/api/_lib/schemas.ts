@@ -31,6 +31,7 @@ export const itemParamsSchema = z.object({ itemId: z.string().uuid() }).strict()
 export const outfitParamsSchema = z.object({ outfitId: z.string().uuid() }).strict();
 export const planParamsSchema = z.object({ planId: z.string().uuid() }).strict();
 export const outfitCandidateParamsSchema = z.object({ candidateId: z.string().uuid() }).strict();
+export const visualizationParamsSchema = z.object({ visualizationId: z.string().uuid() }).strict();
 
 export const profileUpdateSchema = z
   .object({

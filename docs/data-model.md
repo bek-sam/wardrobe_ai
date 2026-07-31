@@ -179,6 +179,57 @@ The curator agent (`src/lib/ai/agents/outfit-curator-agent.ts`) reviews at most 
 
 Because `writeCandidates()` upserts on `(user_id, combination_key)` instead of always inserting, an unaffected candidate's curator verdict and cached preview survive an unrelated recompile untouched.
 
+## Outfit Studio: identity references and visualizations
+
+The try-on pipeline is deliberately **decoupled from `outfit_candidates`**. A
+visualization belongs to an immutable, ordered _outfit snapshot_, so a
+generated candidate, a saved outfit, a plan, and a throwaway studio composition
+all normalize into one model and one pipeline.
+
+- `profile_identity_references` — versioned, validated reference photos. A
+  partial unique index enforces **one active, non-deleted reference per user**,
+  and a check constraint means a row can only become active once it has passed
+  validation _and_ recorded a consent version and timestamp. `storage_path` is
+  constrained to start with the owner's UUID.
+- `outfit_visualizations` — one row per (snapshot, configuration) attempt.
+  `source_id` is intentionally **not** a foreign key: a visualization must
+  survive its source being deleted, because the snapshot is the real subject.
+  Ownership is still enforced — the creating RPC resolves the source under the
+  caller's own id first. A partial unique index on `(user_id, source_hash)`
+  over live rows is what collapses two simultaneous "Try it on" clicks into one
+  paid job. A check constraint means a `ready` row must actually have bytes.
+- `outfit_visualization_items` — the immutable snapshot: ordered role, exact
+  item id, the cut-out's bucket/path/content hash, and the garment's hotspot.
+  Carries composite ownership foreign keys to both the visualization and
+  `wardrobe_items`, and a unique index enforcing one garment per role.
+- `outfit_visualization_jobs` — the durable claim/lease queue, mirroring
+  `outfit_preview_jobs` (`claim_outfit_visualization_jobs`,
+  `advance_outfit_visualization`, `finalize_outfit_visualization`,
+  `fail_outfit_visualization`). `fail_*` takes an explicit `p_retryable`, so a
+  retryable provider blip and a terminal QA rejection never collapse into one
+  state.
+- `outfit_visualization_feedback` — bounded enum plus an optional short
+  comment. No image reference, no free-form field wide enough to become one.
+
+`wardrobe_item_images.content_sha256` is added (nullable, populated lazily on
+first use) so freshness rests on real content rather than timestamps.
+
+`request_outfit_visualization(...)` is the single client entry point. It
+re-verifies every snapshot item against owned/active/available rows itself —
+independently of whatever the route resolved — then owns the rate limit, the
+dedupe, the per-user queue cap, and the paid daily quota transactionally. It
+returns a **discriminated** outcome: `created`, `reused`, `already_fresh`,
+`queue_full`, `quota_exhausted`, `conflict`, `needs_identity`, `needs_consent`.
+Quota is consumed only on a newly accepted generation.
+
+Two trigger families keep a rendered image honest: a change to any member
+item's cut-out, availability, status, or deletion marks containing `ready`
+visualizations `stale`, and replacing the identity reference marks every ready
+visualization `stale` and queues the old photo's bytes for deletion. Revoking
+consent blocks future generations and can queue every generated asset.
+
+See `docs/outfit-studio.md` for the full architecture.
+
 The modeled-preview pipeline is a separate claim-queue, `outfit_preview_jobs`, mirroring `wardrobe_compilation_jobs`'s claim/lease/backoff shape (`claim_outfit_preview_jobs`, `finalize_outfit_preview_job`, `fail_outfit_preview_job`). `enqueue_outfit_preview_job(...)` computes its own freshness hash from the candidate's current items + latest cutout timestamps, dedupes via a partial unique index (`outfit_preview_jobs_candidate_active_unique`), and soft-caps per-user queued jobs (returns `null` rather than erroring). It is called from four priority paths — new items just compiled, a saved outfit, tomorrow's planned outfit, and a frequently-suggested-but-preview-less candidate — plus the client-facing `request_outfit_preview(p_candidate_id)` wrapper, which additionally enforces `profiles.modeled_preview_consent` and a rate limit. `profiles.modeled_preview_consent` has a database-level co-constraint requiring `identity_reference_path` to already be set, so consent can never be enabled without a private reference photo on file. The preview worker (`src/jobs/generate-outfit-previews.ts`) never runs on the request path; it downloads the identity reference and each member item's cutout, calls the (already-existing) `generateModeledPreview()` image helper, and stores the result under `wardrobe-generated/{userId}/{candidateId}/...`, denormalizing `preview_status`/`preview_bucket`/`preview_storage_path` back onto the `outfit_candidates` row for the retriever to read with zero extra joins.
 
 ### Chat and observability

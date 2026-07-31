@@ -1,9 +1,23 @@
+import { differsFromAll, outfitFoundationKey } from "@/lib/recommendation";
+
 import { MAX_RESULTS, RETRIEVAL_MIN_SCORE } from "./constants.data";
 import type { EvaluatedCandidate, RetrievedOutfitSelectionReason } from "./types";
 
-export function selectDiverseCandidates(
-  evaluated: readonly EvaluatedCandidate[],
-): (EvaluatedCandidate & { selectionReason: RetrievedOutfitSelectionReason })[] {
+type Selected = EvaluatedCandidate & { selectionReason: RetrievedOutfitSelectionReason };
+
+function comparable(candidate: EvaluatedCandidate) {
+  const itemIds = candidate.items.map((member) => member.item_id);
+  return { itemIds, foundationKey: outfitFoundationKey(itemIds, candidate.resolvedItems) };
+}
+
+/**
+ * Picks up to three qualifying candidates along three different axes — safest,
+ * least-suggested, best preference match — and rejects any pick that is not
+ * *meaningfully* different from the ones already chosen. A distinct
+ * combination key was never enough on its own: swapping only the scarf
+ * produced three near-identical looks wearing three different labels.
+ */
+export function selectDiverseCandidates(evaluated: readonly EvaluatedCandidate[]): Selected[] {
   const qualifying = evaluated
     .filter((candidate) => candidate.score >= RETRIEVAL_MIN_SCORE)
     .sort(
@@ -13,40 +27,34 @@ export function selectDiverseCandidates(
     );
   if (qualifying.length === 0) return [];
 
-  const results: (EvaluatedCandidate & { selectionReason: RetrievedOutfitSelectionReason })[] = [];
-  const usedCombinationKeys = new Set<string>();
+  const results: Selected[] = [];
+  const chosen: ReturnType<typeof comparable>[] = [];
 
   function take(candidate: EvaluatedCandidate | undefined, reason: RetrievedOutfitSelectionReason) {
-    if (!candidate) return false;
-    if (usedCombinationKeys.has(candidate.combinationKey)) return false;
-    usedCombinationKeys.add(candidate.combinationKey);
+    if (!candidate || results.some((existing) => existing.candidateId === candidate.candidateId)) {
+      return false;
+    }
+    const shape = comparable(candidate);
+    if (!differsFromAll(shape, chosen)) return false;
+    chosen.push(shape);
     results.push({ ...candidate, selectionReason: reason });
     return true;
   }
 
-  // Safest: the single highest-scoring qualifying candidate.
   take(qualifying[0], "safest");
 
-  // Underused: the least-suggested qualifying candidate that isn't already picked.
-  if (results.length < MAX_RESULTS) {
-    const byUnderused = [...qualifying].sort(
-      (first, second) => first.timesSuggested - second.timesSuggested || second.score - first.score,
-    );
-    for (const candidate of byUnderused) {
-      if (take(candidate, "underused")) break;
-    }
+  const byUnderused = [...qualifying].sort(
+    (first, second) => first.timesSuggested - second.timesSuggested || second.score - first.score,
+  );
+  for (const candidate of byUnderused) {
+    if (results.length >= MAX_RESULTS || take(candidate, "underused")) break;
   }
 
-  // Expressive: the candidate whose compile-time preference match scored
-  // highest that isn't already picked.
-  if (results.length < MAX_RESULTS) {
-    const byPreference = [...qualifying].sort(
-      (first, second) =>
-        second.preferenceMatch - first.preferenceMatch || second.score - first.score,
-    );
-    for (const candidate of byPreference) {
-      if (take(candidate, "expressive")) break;
-    }
+  const byPreference = [...qualifying].sort(
+    (first, second) => second.preferenceMatch - first.preferenceMatch || second.score - first.score,
+  );
+  for (const candidate of byPreference) {
+    if (results.length >= MAX_RESULTS || take(candidate, "expressive")) break;
   }
 
   return results.slice(0, MAX_RESULTS);

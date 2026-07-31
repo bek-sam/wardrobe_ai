@@ -28,8 +28,17 @@ const ROUTES = [
   "/today",
   "/wardrobe",
   "/stylist",
+  "/studio",
   "/settings",
 ];
+
+/**
+ * Route handlers compile on first request too, and the Outfit Studio calls
+ * several of them inside a single assertion window. Warming them with a
+ * deliberately invalid body is enough to build the module graph — the response
+ * is discarded, and a 401/422 costs the same compile as a 200.
+ */
+const API_ROUTES = ["/api/items/cutouts", "/api/outfits/variants", "/api/outfit-visualizations"];
 
 async function reachable(baseURL: string): Promise<boolean> {
   for (let attempt = 0; attempt < 60; attempt += 1) {
@@ -51,5 +60,13 @@ export default async function warmDevServer() {
   // at a time rather than to recreate the stampede this exists to prevent.
   for (const route of ROUTES) {
     await fetch(new URL(route, baseURL), { redirect: "manual" }).catch(() => undefined);
+  }
+  for (const route of API_ROUTES) {
+    await fetch(new URL(route, baseURL), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+      redirect: "manual",
+    }).catch(() => undefined);
   }
 }

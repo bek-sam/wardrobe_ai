@@ -16,6 +16,39 @@ Uploaded images are decoded and checked for supported content, dimensions, size,
 
 Originals, crops, cutouts, labels, and generated images retain explicit lineage. Users can reject candidates or generations. Modeled/identity-reference images require separate consent and are clearly labeled as generated, not an accurate fit simulation.
 
+## AI try-on (Outfit Studio)
+
+Try-on is the most sensitive feature in the app, so it is the most tightly
+constrained:
+
+- **It is opt-in, versioned, and explicit.** Consent requires ticking a box
+  that names what is uploaded, that a third-party AI image service processes
+  it, and how to delete it. A link or an implied acceptance is not consent.
+- **Consent never triggers generation.** Nothing is rendered in the background;
+  every image exists because the user pressed "Try it on".
+- **The reference photo is normalized before it is stored or sent.** EXIF and
+  GPS are stripped by re-encoding, and only the normalized copy is kept.
+- **No body inference, ever.** The suitability check and the fidelity check are
+  both instructed to report only on the _photograph and the garments_ — never
+  on body shape, body type, weight, height, build, fitness, attractiveness,
+  gender identity, ethnicity, age, or health. The stored assessment schema has
+  no field capable of carrying such a judgement.
+- **No fit claims.** Every generated image carries "AI Try-On Preview — style
+  visualization, not size or fit prediction." in the interface, and the label
+  is burned into the file on download.
+- **Facts come from the database, never from pixels.** The localization model
+  only says where a garment is in the frame; every displayed detail is read
+  from the owned wardrobe row.
+- **Quality is gated before anything is shown.** An image that fails the
+  identity, single-person, anatomy, or foundation-garment checks is never
+  served as a normal result.
+- **Replacing or revoking is complete.** Replacing the photo invalidates every
+  existing try-on and queues the old bytes for deletion. Revoking consent
+  blocks future generations and queues _every_ reference photo the account
+  holds — including ones uploaded and reviewed but never activated — plus every
+  generated asset. Regenerating a try-on queues the image it replaces, so a
+  superseded render is never left orphaned in the bucket.
+
 ## AI behavior
 
 - AI metadata remains a proposal until the user reviews it.
@@ -73,3 +106,9 @@ rather than being quietly closed. Completed deletion records are pruned after
 ## Logging
 
 Do not log raw uploads, signed URLs, precise private location beyond what is required, API keys, service credentials, hidden reasoning, or complete third-party responses. Error and agent traces should contain only stable IDs, safe classifications, timing, usage, and redacted summaries.
+
+Image-provider errors are a specific hazard here: an SDK error object can echo
+the request body, which for try-on means the prompt and the user's private
+photo. Every provider failure is therefore reduced to a bounded error code plus
+a short safe summary **before** it reaches a log line, and the original error
+object is dropped rather than re-thrown.

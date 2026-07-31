@@ -6,6 +6,8 @@ export {
   WARDROBE_INTENTS,
 } from "./intent";
 export { runWardrobeOrchestrator, runWardrobeOutfitRequest } from "./run";
+export { answerOutfitVariants } from "./variants";
+export type { OutfitVariantsAnswer, OutfitVariantView, VariantItemView } from "./variants";
 export type { ResolvedIntent, WardrobeIntent } from "./intent";
 export type {
   InsightAnswer,

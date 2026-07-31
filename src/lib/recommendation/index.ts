@@ -11,6 +11,12 @@ export {
   selectBalancedOutfitPlans,
 } from "./planner";
 export {
+  differsFromAll,
+  isMeaningfullyDifferent,
+  outfitOverlapRatio,
+  type DiversityComparable,
+} from "./variant-diversity";
+export {
   ACTIVITY_LEVELS,
   confidentOccasionTags,
   INDOOR_OUTDOOR_VALUES,

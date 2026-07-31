@@ -2,13 +2,13 @@
 
 Wardrobe images are private user data. The database migrations create five non-public Supabase Storage buckets:
 
-| Bucket               | Required path shape                               | Purpose                                                  |
-| -------------------- | ------------------------------------------------- | -------------------------------------------------------- |
-| `wardrobe-originals` | `{userId}/{jobId}/...`                            | original uploads and import lineage                      |
-| `wardrobe-items`     | `{userId}/{itemId}/...`                           | manually uploaded item images and final item derivatives |
-| `wardrobe-labels`    | `{userId}/{itemId}/...`                           | close label, logo, SKU, and barcode photos               |
-| `wardrobe-generated` | `{userId}/{jobId}/...` or `{userId}/{itemId}/...` | AI cutouts and opt-in modeled/editorial generations      |
-| `profile-references` | `{userId}/...`                                    | separately consented private identity references         |
+| Bucket               | Required path shape                                                                                 | Purpose                                                                           |
+| -------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `wardrobe-originals` | `{userId}/{jobId}/...`                                                                              | original uploads and import lineage                                               |
+| `wardrobe-items`     | `{userId}/{itemId}/...`                                                                             | manually uploaded item images and final item derivatives                          |
+| `wardrobe-labels`    | `{userId}/{itemId}/...`                                                                             | close label, logo, SKU, and barcode photos                                        |
+| `wardrobe-generated` | `{userId}/{jobId}/...`, `{userId}/{itemId}/...`, or `{userId}/visualizations/{visualizationId}/...` | AI cutouts, opt-in modeled/editorial generations, and Outfit Studio try-on images |
+| `profile-references` | `{userId}/...` (normalized copies at `{userId}/identity/...`)                                       | separately consented private identity references                                  |
 
 Candidate crops remain under the import job's immutable `wardrobe-originals/{userId}/{jobId}/...` lineage. Extraction and modeled attempts use `wardrobe-generated/{userId}/{jobId}/...`. Database confirmation first creates item and lineage rows transactionally; the authenticated server route then copies approved crop/cutout/modeled assets to deterministic item-prefixed paths and conditionally updates only those image rows. Job-scoped source objects remain untouched for safe replay and are removed only by later job-retention cleanup.
 
@@ -27,6 +27,38 @@ RLS is not content validation. Before issuing a signed upload or accepting a com
 7. Store MIME type, dimensions, byte count, bucket, and path in the corresponding row.
 
 Do not trust a client-provided `userId`, object path, extension, MIME type, `itemId`, or `jobId`.
+
+### Identity reference photos
+
+The identity photo carries the highest privacy weight of anything the app
+stores, so its path is fully server-constructed and the client's upload path is
+never persisted:
+
+1. The client uploads through the ordinary signed-upload route.
+2. The confirmation route ownership-checks that path, reads it **once**, and
+   discards it.
+3. The decoded bytes are validated, re-encoded to a canonical sRGB PNG (which
+   is what strips EXIF and GPS), and written to a new server-constructed path
+   under `profile-references/{userId}/identity/`.
+4. The raw upload is immediately enqueued for deletion, so no unnormalized copy
+   carrying location metadata survives.
+5. Only the normalized copy is referenced by `profile_identity_references`.
+
+Replacing the photo deactivates the previous reference and queues its bytes for
+deletion. Revoking consent does the same and can additionally queue every
+generated try-on asset.
+
+### Try-on images
+
+Generated try-on images are stored at
+`wardrobe-generated/{userId}/visualizations/{visualizationId}/{uuid}.png` and
+are only ever served through a short-lived signed URL minted per request after
+an ownership check, or streamed through the authenticated download route. The
+download route proxies the bytes and burns the AI-preview label into the file;
+it never hands out a URL. Superseded, terminally failed, and blocked
+visualizations have their bytes queued for deletion by
+`prune_outfit_visualization_assets(...)` while keeping their safe debugging
+metadata.
 
 ## Signed URLs
 

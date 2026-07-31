@@ -61,7 +61,13 @@ beforeEach(() => {
     },
     error: null,
   });
-  rpc.mockResolvedValue({ data: { schema_version: 1, wardrobe_items: [] }, error: null });
+  rpc.mockImplementation((name: string) =>
+    Promise.resolve(
+      name === "export_my_visualization_data"
+        ? { data: { outfit_visualizations: [], profile_identity_references: [] }, error: null }
+        : { data: { schema_version: 1, wardrobe_items: [] }, error: null },
+    ),
+  );
   order.mockResolvedValue({
     data: [{ terms_version: "2026-07-28", privacy_version: "2026-07-28", source: "signup" }],
     error: null,
@@ -125,7 +131,7 @@ describe("account security DTO", () => {
 describe("account export", () => {
   it("adds account and consent metadata and bumps the schema version", async () => {
     const result = await buildAccountExport(client(), noisyUser());
-    expect(result.schema_version).toBe(2);
+    expect(result.schema_version).toBe(3);
     expect(result.account).toMatchObject({
       user_id: "u1",
       email: "sam@example.test",
@@ -145,6 +151,12 @@ describe("account export", () => {
   it("keeps the relational payload from the RLS-bound RPC", async () => {
     const result = (await buildAccountExport(client(), noisyUser())) as Record<string, unknown>;
     expect(result.wardrobe_items).toEqual([]);
+  });
+
+  it("includes the Outfit Studio tables from their own RLS-bound RPC", async () => {
+    const result = (await buildAccountExport(client(), noisyUser())) as Record<string, unknown>;
+    expect(result.outfit_visualizations).toEqual([]);
+    expect(result.profile_identity_references).toEqual([]);
   });
 
   it("contains no tokens, secrets, or raw provider payloads", async () => {
