@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.service.json",
+  "compilerOptions": {
+    "composite": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/contracts.tsbuildinfo"
+  },
+  "include": ["src/**/*.ts"]
+}

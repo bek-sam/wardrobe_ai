@@ -1,12 +1,13 @@
 import { ArrowLeft, Envelope } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
 
-import { AuthConfigurationNote } from "@/components/ui/AuthConfigurationNote";
-import { AuthFeedback } from "@/components/ui/AuthFeedback";
-import type { SearchParamValue } from "@/components/ui/search-param-value";
-import { isSupabaseConfigured } from "@/lib/env/client";
-
-import { ForgotPasswordForm } from "./ForgotPasswordForm";
+import { AuthConfigurationNote } from "@/components/ui";
+import { AuthFeedback } from "@/components/ui";
+import type { SearchParamValue } from "@/components/ui/auth";
+import { SubmitButton } from "@/components/ui/client";
+import { TextField } from "@/components/ui";
+import { TurnstileField } from "@/components/ui/client";
+import { getFrontendConfig } from "@/lib/backend/server";
 
 export const metadata = { title: "Reset password" };
 
@@ -15,13 +16,33 @@ type ForgotPasswordSearchParams = Promise<{
   notice?: SearchParamValue;
 }>;
 
+function ForgotPasswordForm({ configured }: { configured: boolean }) {
+  return (
+    <form className="auth-form" action="/api/auth/forgot-password" method="post">
+      <TextField
+        autoComplete="email"
+        id="reset-email"
+        label="Email address"
+        name="email"
+        placeholder="you@example.com"
+        required
+        type="email"
+      />
+      <TurnstileField action="password-recovery" />
+      <SubmitButton disabled={!configured} pendingLabel="Sending the link…">
+        Send reset link
+      </SubmitButton>
+    </form>
+  );
+}
+
 export default async function ForgotPasswordPage({
   searchParams,
 }: {
   searchParams: ForgotPasswordSearchParams;
 }) {
   const query = await searchParams;
-  const configured = isSupabaseConfigured();
+  const configured = (await getFrontendConfig()).databaseConfigured;
 
   return (
     <section className="auth-card auth-card--compact" aria-labelledby="reset-title">

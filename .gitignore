@@ -1,6 +1,6 @@
 node_modules/
-dist/
-.next/
+**/dist/
+**/.next/
 coverage/
 playwright-report/
 test-results/
@@ -11,8 +11,8 @@ test-results/
 .env.*
 !.env.example
 *.log
-data/
+legacy/data/
 .claude/settings.local.json
 NEW_FEATURES.md
-supabase/.temp/
+database/supabase/.temp/
 docs/new_features

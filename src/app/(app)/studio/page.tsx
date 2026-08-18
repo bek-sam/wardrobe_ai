@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageHeader } from "@/components/ui";
 import { OutfitStudioShell } from "@/features/studio/components";
 
 export const metadata = { title: "Outfit Studio" };

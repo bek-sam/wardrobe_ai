@@ -1,14 +1,39 @@
 import { Key } from "@phosphor-icons/react/ssr";
 import Link from "next/link";
 
-import { AuthFeedback } from "@/components/ui/AuthFeedback";
-import type { SearchParamValue } from "@/components/ui/search-param-value";
-import { AUTH_ACTION_COOKIE } from "@/lib/auth/constants";
+import { AuthFeedback } from "@/components/ui";
+import { PasswordField } from "@/components/ui/client";
+import type { SearchParamValue } from "@/components/ui/auth";
+import { SubmitButton } from "@/components/ui/client";
+import { AUTH_ACTION_COOKIE, PASSWORD_MIN_LENGTH } from "@/lib/auth/constants";
 import { cookies } from "next/headers";
 
-import { ResetPasswordForm } from "./ResetPasswordForm";
-
 export const metadata = { title: "Choose a new password" };
+
+function ResetPasswordForm() {
+  return (
+    <form className="auth-form" action="/api/auth/reset-password" method="post">
+      <PasswordField
+        autoComplete="new-password"
+        hint={`At least ${PASSWORD_MIN_LENGTH} characters. Spaces are allowed and nothing is trimmed.`}
+        id="reset-new-password"
+        label="New password"
+        name="password"
+        placeholder="Choose a new password"
+        required
+      />
+      <PasswordField
+        autoComplete="new-password"
+        id="reset-new-password-confirm"
+        label="Confirm new password"
+        name="passwordConfirmation"
+        placeholder="Re-enter the new password"
+        required
+      />
+      <SubmitButton pendingLabel="Saving your new password…">Save new password</SubmitButton>
+    </form>
+  );
+}
 
 type ResetPasswordSearchParams = Promise<{ error?: SearchParamValue; notice?: SearchParamValue }>;
 

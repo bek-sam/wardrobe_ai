@@ -16,7 +16,7 @@ env:
   # Pinned rather than `latest`, so a CLI release cannot change what the
   # migrations are applied by between two runs of the same commit.
   SUPABASE_CLI_VERSION: 2.110.0
-  NODE_VERSION: 22.12.0
+  NODE_VERSION: 22.13.1
 
 # No OpenAI secret is used anywhere in this workflow. The unit suite mocks the
 # model client, and the integration and authenticated E2E jobs exercise the
@@ -72,13 +72,13 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
-      - run: supabase start
-      # Applies supabase/migrations in order, including the auth security
+      - run: supabase start --workdir database
+      # Applies database/supabase/migrations in order, including the auth security
       # foundations, MFA assurance enforcement, and deletion-state migrations.
-      - run: supabase db reset
+      - run: supabase db reset --workdir database
       - run: npm run test:integration
       - if: always()
-        run: supabase stop
+        run: supabase stop --workdir database
 
   e2e:
     needs: quality
@@ -94,10 +94,10 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: ${{ env.SUPABASE_CLI_VERSION }}
-      - run: supabase start
-      - run: supabase db reset
+      - run: supabase start --workdir database
+      - run: supabase db reset --workdir database
       - run: npx playwright install --with-deps chromium
-      # playwright.config.ts reads `supabase status -o env` itself and passes
+      # playwright.config.ts reads `supabase status --workdir database -o env` itself and passes
       # the local URL/keys plus the auth test secrets to the dev server it
       # starts, so the authenticated and auth-flow specs run for real rather
       # than skipping themselves. Email is read from the local Mailpit.
@@ -116,4 +116,4 @@ jobs:
           path: playwright-report/
           retention-days: 7
       - if: always()
-        run: supabase stop
+        run: supabase stop --workdir database

@@ -1,125 +1,144 @@
-# Deployment: background workers
+# Deployment
 
-Five kinds of durable, expensive work are represented as rows in Postgres and processed by a worker, not tied to one browser request: photo import, product research, private-object storage cleanup, wardrobe compilation, and outfit preview generation. Each has a matching internal Route Handler:
+Wardrobe AI ships four independent workloads plus one managed Supabase project.
+Do not deploy the repository root as one container.
 
-| Work                 | Route                                        | Job table                   |
-| -------------------- | -------------------------------------------- | --------------------------- |
-| Import               | `POST /api/internal/imports/process`         | `import_jobs`               |
-| Research             | `POST /api/internal/research/process`        | `research_runs`             |
-| Storage cleanup      | `POST /api/internal/storage/process`         | `storage_deletion_queue`    |
-| Wardrobe compilation | `POST /api/internal/wardrobe/process`        | `wardrobe_compilation_jobs` |
-| Preview generation   | `POST /api/internal/outfit-previews/process` | `outfit_preview_jobs`       |
+## Production topology
 
-All five share the same shape: `FOR UPDATE SKIP LOCKED` batch claim with a lease (`locked_until`), bounded retries with exponential backoff, and a hard `maxDuration` so a stuck invocation can't run forever. None of them are triggered by the browser in production — the interactive routes (e.g. the wardrobe "Recompile" button) opportunistically claim and process **one** job they themselves just created for low latency, but the durable guarantee ("this eventually runs, even if every browser closes") comes entirely from an external scheduler calling these routes on an interval.
+| Workload         | Exposure                                           | Scale unit                                       | Required private configuration                                                             |
+| ---------------- | -------------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| Frontend         | public edge                                        | stateless HTTP replica                           | `BACKEND_URL`; browser-safe `NEXT_PUBLIC_*` only                                           |
+| Backend          | public only through edge `/api` and auth callbacks | stateless HTTP replica                           | Supabase server credentials, auth secrets, AI workload token, weather/storage/quota policy |
+| Worker           | no public port                                     | continuous process replica + bounded concurrency | Supabase server credential, AI workload token, job/media policy                            |
+| AI Orchestration | private network only                               | stateless HTTP replica                           | AI workload token, OpenAI key/model policy                                                 |
+| Supabase         | platform endpoints as required                     | managed database/Auth/Storage                    | schema, RLS, private bucket policy                                                         |
 
-Preview generation claims a smaller batch (3 jobs, vs 5 for wardrobe compilation) and re-checks its execution budget before _every_ job in the batch, not just between batches — each job can include several image downloads plus an OpenAI image-generation call, so its per-job duration is far less predictable than the other four workers' (see `src/jobs/generate-outfit-previews/process-batch.ts`).
+Use the Dockerfiles under `infrastructure/docker/` as separate build targets.
+Both Next workloads use `output: "standalone"`. The Frontend image contains the
+Frontend bundle only; it does not receive Backend, Worker, database migration,
+or AI source.
 
-## Authorization
+At the edge:
 
-Every internal route requires `Authorization: Bearer <secret>`, checked with a constant-time comparison. By default all five accept `IMPORT_WORKER_SECRET` (or the more generic `CRON_SECRET` as a fallback). The wardrobe-compilation and preview-generation routes additionally accept their own dedicated secret, checked first, so that worker's credential can be rotated or scoped independently of the others without touching import/research/storage:
+- route pages/assets to Frontend;
+- route `/api/*` and `/auth/callback/*` to Backend, preserving cookies, origin,
+  request IDs, streaming, and response headers;
+- never route Worker or AI Orchestration publicly;
+- set proxy body/time limits consciously for signed-upload negotiation and SSE;
+- drain an instance before termination rather than cutting active requests.
 
+## Secrets and configuration
+
+Use a secret manager and distinct workload identities. Never build secrets into
+images or inject a single shared environment into every workload in production.
+The local Compose `env_file` is convenience only; production must inject
+per-service variables.
+
+| Variable group                    | Frontend | Backend | Worker |  AI |
+| --------------------------------- | -------: | ------: | -----: | --: |
+| `NEXT_PUBLIC_*`, `BACKEND_URL`    |      yes |      no |     no |  no |
+| Supabase URL/publishable key      |       no |     yes |     no |  no |
+| Supabase secret/service role      |       no |     yes |    yes |  no |
+| auth action/rate-limit secrets    |       no |     yes |     no |  no |
+| `AI_SERVICE_TOKEN`                |       no |     yes |    yes | yes |
+| OpenAI key/models/provider policy |       no |      no |     no | yes |
+| Worker concurrency/job policy     |       no |      no |    yes |  no |
+
+Prefer a different Supabase secret key per trusted workload so one compromise
+can be rotated independently. Privileged Supabase keys bypass RLS; Backend and
+Worker must still validate ownership explicitly. Move away from legacy
+`service_role` JWT keys when all required Supabase tooling supports newer
+secret keys.
+
+## Scaling
+
+### Frontend and Backend
+
+Both are stateless. Add replicas behind a load balancer for horizontal scale.
+Do not store sessions, idempotency, queues, or correctness-critical cache state
+in process memory or a local filesystem. If Next server cache is enabled across
+multiple instances, configure shared cache coordination or disable behavior
+that cannot tolerate per-instance divergence.
+
+Scale vertically when profiles show CPU/memory saturation in a single request;
+scale horizontally for throughput and availability. Observe database connection
+pressure when increasing Backend replicas.
+
+### Worker
+
+Every replica runs the same dispatcher or a subset selected by
+`WORKER_ENABLED_FAMILIES`. PostgreSQL claim RPCs use `FOR UPDATE SKIP LOCKED`,
+leases, and bounded batches, so replicas do not intentionally claim the same
+row. Expired leases recover crashed work.
+
+- horizontal: add Worker replicas;
+- vertical: raise `WORKER_CONCURRENCY` gradually (allowed range 1–6);
+- isolate a heavy family with a narrower enabled-family list;
+- autoscale on oldest-ready-job age and queue depth, not CPU alone;
+- cap scale at database, Storage, memory, and provider concurrency limits.
+
+Worker shutdown handles `SIGTERM`/`SIGINT`, stops claiming new work, and gives
+in-flight handlers a drain window. A hard stop remains recoverable through the
+lease, so handlers must stay idempotent.
+
+### AI Orchestration
+
+AI Orchestration is stateless and can scale separately. Apply provider
+concurrency/rate/cost control at this layer. Authenticate every call with the
+workload token, honor `x-deadline-at`, bound request bodies/input shape, and
+return typed failures without leaking provider detail.
+
+## Database release sequence
+
+1. Back up and test the migration on a production-like database.
+2. Apply additive migrations from `database/supabase/migrations` in order.
+3. Deploy backward-compatible AI Orchestration and Worker changes.
+4. Deploy Backend, then Frontend.
+5. Observe error rate, queue age/retries, database locks/connections, provider
+   latency/cost, and p95/p99 request latency.
+6. Remove compatibility code only after all old replicas are gone.
+
+Never edit an applied migration. A rolling release must tolerate both the
+preceding and new contract/schema until every replica has advanced.
+
+## Health and readiness
+
+- Frontend: page/asset readiness plus Backend dependency telemetry.
+- Backend: `GET /api/v1/health`; readiness fails when it cannot safely accept
+  work, while short provider degradation is surfaced separately.
+- AI Orchestration: `GET /internal/v1/health` on the private network.
+- Worker: process liveness plus alerts on heartbeat, queue age, lease expiry,
+  retry rate, and terminal failures.
+- Supabase: connection/transaction latency, lock waits, Storage error rate, and
+  migration version.
+
+Propagate `x-request-id`/W3C trace context across edge → Frontend → Backend →
+job → Worker → AI, while keeping raw prompts, images, signed URLs, object paths,
+session values, and secrets out of telemetry.
+
+## Local production parity
+
+```bash
+cp .env.example .env.local
+docker compose --env-file .env.local -f infrastructure/local/compose.yaml up --build
+docker compose --env-file .env.local -f infrastructure/local/compose.yaml up --scale worker=3
 ```
-secret = WARDROBE_COMPILATION_WORKER_SECRET ?? IMPORT_WORKER_SECRET ?? CRON_SECRET
-secret = OUTFIT_PREVIEW_WORKER_SECRET ?? WARDROBE_COMPILATION_WORKER_SECRET ?? IMPORT_WORKER_SECRET ?? CRON_SECRET
+
+The Compose private network publishes no AI or Worker host port. For routine
+source development, `npm run dev` starts the same four processes using the same
+network protocols.
+
+## Release gates
+
+```bash
+npm run check:quality
+npx supabase start --workdir database
+npx supabase db reset --workdir database
+npm run test:integration
+npm run test:e2e -- --project=chromium
 ```
 
-Generate any of these with `openssl rand -hex 32`. Never reuse a worker secret as a user-facing credential, and never commit a real value — `.env.example` documents the variable names only.
-
-## Required environment variables
-
-| Variable                                                         | Required           | Purpose                                                                                                                                                                                                                                                                                                                              |
-| ---------------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SUPABASE_SERVICE_ROLE_KEY`                                      | yes                | Every worker uses the admin (service-role) Supabase client to claim/write jobs across users; RLS intentionally denies this to normal sessions.                                                                                                                                                                                       |
-| `NEXT_PUBLIC_SUPABASE_URL`                                       | yes                | Supabase project the admin client connects to.                                                                                                                                                                                                                                                                                       |
-| `IMPORT_WORKER_SECRET` and/or `CRON_SECRET`                      | yes (at least one) | Shared worker authorization, see above.                                                                                                                                                                                                                                                                                              |
-| `WARDROBE_COMPILATION_WORKER_SECRET`                             | optional           | Dedicated wardrobe-compilation worker/health credential; falls back to the shared secrets above when unset.                                                                                                                                                                                                                          |
-| `WARDROBE_COMPILATION_MAX_CANDIDATES`                            | optional           | Hard cap on stored candidates per compilation run. Unset uses a dynamic default (`min(1000, max(20, wardrobe_size * 8))`).                                                                                                                                                                                                           |
-| `WARDROBE_COMPILATION_MAX_FOUNDATIONS_PER_BUCKET`                | optional           | How many top-ranked foundations per occasion bucket get expanded into variants. Unset defaults to 60.                                                                                                                                                                                                                                |
-| `OPENAI_API_KEY`, `OPENAI_STYLIST_MODEL`                         | optional           | Only needed for the occasion-resolution AI escalation (`resolveOccasionContextWithEscalation`); wardrobe compilation itself never calls a model. Retrieval/orchestration degrades to deterministic-only occasion matching when unset — it never fails closed, since the deterministic default is a legitimate answer, not fake data. |
-| `OUTFIT_PREVIEW_WORKER_SECRET`                                   | optional           | Dedicated preview-generation worker credential; falls back to the shared secrets above when unset.                                                                                                                                                                                                                                   |
-| `PREVIEW_DAILY_LIMIT`                                            | optional           | Per-user daily cap on modeled preview generations, enforced by the worker before each render. `.env.example` default: 30.                                                                                                                                                                                                            |
-| `PREVIEW_MAX_QUEUED_PER_USER`                                    | optional           | Caps how many preview jobs one user can have queued/running at once; `enqueue_outfit_preview_job` rejects beyond this. `.env.example` default: 5.                                                                                                                                                                                    |
-| `PREVIEW_FREQUENTLY_SUGGESTED_THRESHOLD`                         | optional           | `times_suggested` count at which a previewless candidate gets opportunistically queued by the worker's scheduled sweep. `.env.example` default: 3.                                                                                                                                                                                   |
-| `PREVIEW_MAX_AUTO_PER_UPLOAD`                                    | optional           | Caps how many previews are auto-queued per import batch outside the worker's own sweep. `.env.example` default: 5.                                                                                                                                                                                                                   |
-| `NEXT_PUBLIC_APP_URL`                                            | yes                | Canonical HTTPS origin. Every email link and OAuth redirect is built from it, never from the request's `Host` header. Must match the Supabase Site URL exactly.                                                                                                                                                                      |
-| `AUTH_ACTION_SECRET`                                             | yes                | Signs the one-time password-reset and deletion-reauthentication challenges. `openssl rand -hex 32`. Password recovery fails closed without it.                                                                                                                                                                                       |
-| `AUTH_RATE_LIMIT_HMAC_SECRET`                                    | yes                | Keys the pre-authentication rate-limit buckets so no raw email or IP is stored. `openssl rand -hex 32`, different from the above.                                                                                                                                                                                                    |
-| `PUBLIC_SIGNUP_ENABLED`                                          | optional           | Server-enforced signup gate; defaults to off. A disabled browser button is not the control.                                                                                                                                                                                                                                          |
-| `TRUSTED_CLIENT_IP_HEADER`                                       | optional           | Name of the client-IP header your proxy **overwrites** (`x-vercel-forwarded-for` on Vercel). Unset collapses IP rate-limit buckets into one shared bucket rather than trusting a forgeable header.                                                                                                                                   |
-| `NEXT_PUBLIC_GOOGLE_AUTH_ENABLED`                                | optional           | Renders the Google button and enables the OAuth routes. Off by default; the provider itself is configured in Supabase.                                                                                                                                                                                                               |
-| `NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED`                           | optional           | Optional passwordless sign-in for existing accounts only. Off by default.                                                                                                                                                                                                                                                            |
-| `NEXT_PUBLIC_CAPTCHA_ENABLED` + `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | optional           | Turnstile. The **secret** goes in Supabase, which performs the verification. Enabling the flag without a site key is a hard startup error, never a silent bypass.                                                                                                                                                                    |
-
-Full guidance for the authentication variables — including which secrets belong
-in Supabase rather than here — is in [`authentication.md`](./authentication.md)
-and [`auth-production-checklist.md`](./auth-production-checklist.md).
-
-## Scheduling in production
-
-Pick any scheduler capable of an authenticated HTTPS POST on an interval; none of these routes are Vercel/host-specific.
-
-**Recommended cadence:** every 1–2 minutes for wardrobe compilation and import (interactive-feeling latency matters), every 5 minutes for research and storage cleanup (best-effort, lower urgency). Preview generation can also run every 1–2 minutes, though the interactive owned-claim path (`processOwnedOutfitPreviewJob`) already covers the latency-sensitive case, so a 5-minute interval is acceptable if you'd rather conserve invocations. Each call claims a bounded batch of jobs (5 for wardrobe compilation, 3 for preview generation) and processes as many as fit in its execution budget (`EXECUTION_BUDGET_MS` in `src/app/api/internal/wardrobe/process/route.ts` and `src/app/api/internal/outfit-previews/process/run-preview-worker.ts`), so a short interval is safe — an overlapping invocation just claims a disjoint set of jobs via `SKIP LOCKED`.
-
-### Option A: Vercel Cron
-
-Add a `vercel.json` with a `crons` entry per route, e.g.:
-
-```json
-{
-  "crons": [{ "path": "/api/internal/wardrobe/process", "schedule": "*/2 * * * *" }]
-}
-```
-
-Vercel Cron invocations are unauthenticated by default (no custom `Authorization` header support), so pair this with `CRON_SECRET` read from the standard `Authorization: Bearer $CRON_SECRET` header Vercel sends on cron-triggered requests, or front the route with a thin authenticated proxy if your plan doesn't support that header.
-
-### Option B: GitHub Actions scheduled workflow
-
-```yaml
-name: wardrobe-compilation-worker
-on:
-  schedule:
-    - cron: "*/2 * * * *"
-jobs:
-  invoke:
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          curl -sf -X POST "$APP_URL/api/internal/wardrobe/process" \
-            -H "Authorization: Bearer $WORKER_SECRET"
-        env:
-          APP_URL: ${{ secrets.APP_URL }}
-          WORKER_SECRET: ${{ secrets.WARDROBE_COMPILATION_WORKER_SECRET }}
-```
-
-GitHub's scheduled-workflow cadence is best-effort (can lag under load), which is acceptable here since a missed tick just means the next one catches up — no work is lost, only delayed.
-
-### Option C: any external cron/uptime service
-
-Any service that can POST with a custom header on an interval (e.g. a hosted cron service, a small VM with `cron` + `curl`) works identically. The only requirements are: HTTPS, the `Authorization: Bearer <secret>` header, and a timeout comfortably above the route's own `maxDuration` (300s) so the caller doesn't retry into an already-running invocation.
-
-## Health/status
-
-`GET /api/internal/wardrobe/health` (same authorization as the process route) returns aggregate queue depth — `queued_jobs`, `running_jobs`, `failed_jobs`, `failed_jobs_last_24h`, `oldest_queued_job_age_seconds` — and nothing else: no job IDs, user IDs, or wardrobe content. Wire it into an uptime/status dashboard and alert on `oldest_queued_job_age_seconds` exceeding a few multiples of your scheduling interval (indicates the scheduler stopped firing or the worker is failing every claim) or a persistently nonzero `failed_jobs_last_24h`.
-
-`GET /api/internal/storage/health` (worker secret) does the same for private-file deletion: `pending`, `processing`, `dead_letter`, `oldest_pending_age_seconds`, `failures_last_24h`, `account_deletions_awaiting_storage`, and `account_deletions_needing_attention` — counts and durations only, no user IDs, bucket names, or object paths. Alert on `dead_letter > 0` or `account_deletions_needing_attention > 0` (an account deletion has not finished and needs an operator), and on `oldest_pending_age_seconds` growing past a few scheduling intervals (the worker has stopped).
-
-Import and research don't yet have an equivalent `/health` route; the same pattern (aggregate counts from their job tables, same authorization) extends directly if that's needed later.
-
-### Retention sweep
-
-`POST /api/internal/maintenance/prune` (same worker authorization) runs the two retention functions: `prune_auth_operational_data()` removes spent auth challenges, expired rate-limit buckets, and auth events older than 90 days; `prune_completed_account_deletions()` removes finished deletion records and completed queue rows after 30 days. Neither touches a dead-lettered object or a deletion still flagged for attention — those are the only remaining evidence that something needs repair. **Recommended cadence: daily.**
-
-## Stylist chat rate limits
-
-The stylist chat charges each route only what it costs (full matrix in [Runtime AI and tools](agents.md#intent--quota-matrix)). Two rolling limits exist specifically so the zero-model routes stay protected without spending generation budget:
-
-| Variable                                      | Required | Purpose                                                                                                                                                                                               |
-| --------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `WARDROBE_QUERY_RATE_LIMIT_PER_MINUTE`        | optional | Rolling ceiling for the deterministic `item_question` and `insight` routes, which spend no daily AI quota. Default: 20.                                                                               |
-| `INTENT_CLASSIFICATION_RATE_LIMIT_PER_MINUTE` | optional | Bounds how often ambiguous text may escalate to the classifier model. Routing is never billed as a generation, so this limit is what stops it being used as an unmetered model endpoint. Default: 10. |
-
-The existing `DAILY_STYLIST_LIMIT`, `DAILY_PLANNER_LIMIT`, `STYLIST_RATE_LIMIT_PER_MINUTE`, and `PLANNER_RATE_LIMIT_PER_MINUTE` continue to govern the model-backed routes. Deployments with `OPENAI_STYLIST_MODEL` or `OPENAI_PLANNER_MODEL` unset still serve wardrobe lookups and insights normally; the model-backed routes return a typed `503` naming what remains available.
-
-## Migrations
-
-Apply `supabase/migrations` in filename order with the Supabase CLI. This release adds one new file — `202607270001_save_recorded_chat_plans.sql` (the `generated_plan_saves` table and the `save_recorded_generated_week(uuid)` RPC). No historical migration is modified, and the new file is additive and re-runnable (`if not exists` / `create or replace`), so applying it to an existing database needs no downtime and no backfill.
+Also scan the built Frontend artifact for credential names/values, validate
+container contents and non-root/read-only execution, exercise a multi-replica
+Worker crash/lease-recovery scenario, and verify account export/deletion on a
+disposable production-like user before a private beta.

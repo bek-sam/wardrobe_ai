@@ -2,8 +2,8 @@ import { execFileSync } from "node:child_process";
 
 /**
  * Vitest globalSetup: makes `npm run test:integration` work with just
- * `npx supabase start` beforehand, no manual env copying. Parses
- * `supabase status -o env` (KEY="VALUE" lines) instead of requiring the
+ * `npx supabase start --workdir database` beforehand, no manual env copying.
+ * Parses `supabase status --workdir database -o env` (KEY="VALUE" lines) instead of requiring the
  * developer to run it and export the result themselves.
  */
 export default function setup() {
@@ -14,13 +14,13 @@ export default function setup() {
 
   let output: string;
   try {
-    output = execFileSync("npx", ["supabase", "status", "-o", "env"], {
+    output = execFileSync("npx", ["supabase", "status", "--workdir", "database", "-o", "env"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch {
     throw new Error(
-      "Could not read local Supabase status. Run `npx supabase start` first, then re-run " +
+      "Could not read local Supabase status. Run `npx supabase start --workdir database` first, then re-run " +
         "`npm run test:integration`. (Or set TEST_SUPABASE_URL/TEST_SUPABASE_ANON_KEY/" +
         "TEST_SUPABASE_SERVICE_ROLE_KEY yourself to point at another instance.)",
     );
@@ -39,8 +39,8 @@ export default function setup() {
   const serviceRoleKey = values.get("SERVICE_ROLE_KEY");
   if (!url || !anonKey || !serviceRoleKey) {
     throw new Error(
-      "`supabase status -o env` did not report API_URL/ANON_KEY/SERVICE_ROLE_KEY. Is " +
-        "`npx supabase start` running? Got keys: " +
+      "`supabase status --workdir database -o env` did not report API_URL/ANON_KEY/SERVICE_ROLE_KEY. Is " +
+        "`npx supabase start --workdir database` running? Got keys: " +
         [...values.keys()].join(", "),
     );
   }
@@ -57,6 +57,7 @@ export default function setup() {
 // names above. Alias them so that code path resolves the same local
 // instance without needing its own env handling.
 function applyAppEnvAliases() {
-  process.env.NEXT_PUBLIC_SUPABASE_URL ??= process.env.TEST_SUPABASE_URL;
+  process.env.SUPABASE_URL ??= process.env.TEST_SUPABASE_URL;
+  process.env.SUPABASE_PUBLISHABLE_KEY ??= process.env.TEST_SUPABASE_ANON_KEY;
   process.env.SUPABASE_SERVICE_ROLE_KEY ??= process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
 }

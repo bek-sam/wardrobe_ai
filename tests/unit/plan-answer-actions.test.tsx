@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const requestJson = vi.fn();
 vi.mock("@/lib/api/request", () => ({ requestJson }));
 
-const { PlanAnswerActions } = await import("@/features/stylist/components/PlanAnswerActions");
+const { PlanAnswerActions } = await import("@/features/stylist/components");
 
 const generationId = "3f1d6b2e-1c4a-4f38-9b53-1e0f2a7c9d10";
 

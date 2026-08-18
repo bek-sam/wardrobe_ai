@@ -24,7 +24,7 @@ const supabaseReady = e2eSupabaseConfig() !== null;
 test.describe("authenticated stylist", () => {
   test.skip(
     !supabaseReady,
-    "Local Supabase is not configured. Run `npx supabase start` and re-run, or set " +
+    "Local Supabase is not configured. Run `npx supabase start --workdir database` and re-run, or set " +
       "TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_ROLE_KEY.",
   );
 
@@ -45,12 +45,21 @@ test.describe("authenticated stylist", () => {
     if (user) await deleteDisposableUser(admin, user.id);
   });
 
-  async function logIn(page: Page) {
-    await page.goto("/login");
+  /**
+   * Signs in and lands on `destination` in one navigation.
+   *
+   * Following sign-in with a separate `page.goto` races the client-side
+   * navigation the app is still finishing, and Playwright aborts whichever
+   * started second ("interrupted by another navigation"). Carrying the
+   * destination in `returnTo` means there is only ever one navigation to wait
+   * for, so there is nothing left to race.
+   */
+  async function logIn(page: Page, destination = "/today") {
+    await page.goto(`/login?returnTo=${encodeURIComponent(destination)}`);
     await page.getByLabel(/email address/i).fill(user.email);
     await page.getByLabel(/password/i).fill(user.password);
     await page.getByRole("button", { name: /log in securely/i }).click();
-    await page.waitForURL((url) => !url.pathname.startsWith("/login"), { timeout: 30_000 });
+    await page.waitForURL((url) => url.pathname === destination, { timeout: 30_000 });
   }
 
   // The composer is disabled while the conversation history loads and while a
@@ -74,8 +83,7 @@ test.describe("authenticated stylist", () => {
   test("answers a lowercase item question and an insight, and keeps both on reload", async ({
     page,
   }) => {
-    await logIn(page);
-    await page.goto("/stylist");
+    await logIn(page, "/stylist");
 
     // Chat is available on the account alone -- no OpenAI variable is set.
     await expect(page.getByRole("heading", { name: /your stylist/i })).toBeVisible();
@@ -111,8 +119,7 @@ test.describe("authenticated stylist", () => {
 
   test("saves a chat plan explicitly, exactly once", async ({ page }) => {
     const { generationId, conversationId } = await seedRecordedPlan(admin, user.id, items);
-    await logIn(page);
-    await page.goto("/stylist");
+    await logIn(page, "/stylist");
 
     const historySelect = page.getByLabel(/recent chats/i);
     await expect(historySelect).toBeEnabled({ timeout: 30_000 });

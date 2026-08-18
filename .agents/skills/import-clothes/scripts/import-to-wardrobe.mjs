@@ -102,7 +102,7 @@ const modeledDir = options.modeled ? path.resolve(options.modeled) : null;
 const manifestFile = path.resolve(options.manifest);
 const packageFile = path.join(repo, "package.json");
 const packageJson = await readJson(packageFile, null);
-if (!packageJson || packageJson.name !== "wardrobe") throw new Error(`Not a Wardrobe repository: ${repo}`);
+if (!packageJson || packageJson.name !== "wardrobe-ai") throw new Error(`Not a Wardrobe repository: ${repo}`);
 
 const manifest = await readJson(manifestFile, null);
 if (!manifest || !Array.isArray(manifest.items)) throw new Error("Manifest must contain an items array");
@@ -131,7 +131,7 @@ for (const item of accepted) {
   prepared.push({ ...item, bytes, uuid, id, source, assetName, modeledSource, modeledAssetName });
 }
 
-const dataDir = path.join(repo, "data");
+const dataDir = path.join(repo, "legacy", "data");
 const importedDir = path.join(dataDir, "imported");
 const libraryFile = path.join(dataDir, "library.json");
 const records = await readJson(libraryFile, []);

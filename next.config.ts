@@ -6,6 +6,7 @@ import type { NextConfig } from "next";
 // src/lib/proxy/content-security-policy.ts. Everything below is constant, which
 // is exactly what this file is good at.
 const nextConfig: NextConfig = {
+  output: "standalone",
   allowedDevOrigins: ["127.0.0.1"],
   poweredByHeader: false,
   reactStrictMode: true,
@@ -28,6 +29,19 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
+  },
+  async rewrites() {
+    const backendUrl = process.env.BACKEND_URL ?? "http://127.0.0.1:3001";
+    return [
+      // The browser stays on the frontend origin. Next forwards every API and
+      // auth callback over HTTP to the independently deployable Backend, so
+      // cookies remain first-party without putting credentials or database
+      // code in this project.
+      { source: "/api/insights", destination: `${backendUrl}/api/v1/insights` },
+      { source: "/api/:path*", destination: `${backendUrl}/api/:path*` },
+      { source: "/auth/callback", destination: `${backendUrl}/auth/callback` },
+      { source: "/auth/callback/:path*", destination: `${backendUrl}/auth/callback/:path*` },
+    ];
   },
 };
 

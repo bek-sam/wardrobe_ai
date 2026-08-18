@@ -1,14 +1,15 @@
-import { OutfitsManager } from "@/features/outfits/components/OutfitsManager";
-import { isSupabaseConfigured } from "@/lib/env/client";
+import { OutfitsManager } from "@/features/outfits/components";
+import { getFrontendConfig } from "@/lib/backend/server";
 
 import { previewOutfits } from "../preview-data";
 
 export const metadata = { title: "Outfits" };
 
-export default function OutfitsPage() {
+export default async function OutfitsPage() {
+  const configured = (await getFrontendConfig()).databaseConfigured;
   return (
     <div className="page-stack outfits-page">
-      <OutfitsManager configured={isSupabaseConfigured()} previewOutfits={previewOutfits} />
+      <OutfitsManager configured={configured} previewOutfits={previewOutfits} />
     </div>
   );
 }

@@ -1,5 +1,10 @@
 # Claude Code Master Prompt — Wardrobe Outfit Studio and Interactive AI Try-On
 
+> Archived implementation brief. Paths below describe the former mixed root
+> application. Current ownership is documented in [architecture.md](architecture.md):
+> UI is root `src/`, public/server logic is `backend/`, durable pipelines are
+> `worker/`, and prompts/provider code are `ai-orchestration/`.
+
 Paste this entire document into Claude Code from the Wardrobe repository root.
 
 ---
@@ -81,7 +86,9 @@ Important repository constraints:
 - Private images remain private.
 - User-owned junctions use composite ownership foreign keys.
 - Stateful and quota-sensitive mutations use transactional RPCs.
-- Logic files must remain at or below the repository’s 100-line ESLint limit; split by responsibility and re-export through barrels.
+- File length is a review signal, not a limit. Split only at ownership, runtime,
+  responsibility, reuse, or test seams; combine one-use helpers and barrels that
+  add navigation without creating a meaningful boundary.
 - Do not add hidden chain-of-thought logging. Store only safe, compact run summaries.
 - Do not delete or weaken working behavior merely to make tests pass.
 
@@ -128,7 +135,7 @@ Inspect these files first because the review found the relevant behavior there:
   - Current edit call uses a fixed landscape size, assumes one input-fidelity behavior, and should be checked for real input MIME handling.
 - `src/lib/ai/prompts/outfit-preview.ts`
   - Current prompt needs explicit image-number/role mapping, construction fidelity, no-extra-garment rules, portrait/full-body framing, and a version.
-- `supabase/migrations/202607220001_curator_and_previews.sql`
+- `database/supabase/migrations/202607220001_curator_and_previews.sql`
   - Current freshness/enqueue model needs identity/config/order/role/QA/localization inputs and discriminated request outcomes.
 - `src/features/stylist/components/StylistRecommendationPreview.tsx`
   - Failed previews need actionable retry and correction states.
@@ -558,7 +565,9 @@ Use these names if they fit current feature conventions; otherwise preserve the 
 - `OutfitActionDock`
 - `TryOnFeedback`
 
-Split data hooks, state machines, coordinate transforms, and request clients out of visual components. Respect the 100-line logic-file limit.
+Split data hooks, state machines, coordinate transforms, and request clients out
+of visual components when they form independent behavioral or runtime seams.
+Keep one-use presentational fragments with their parent component.
 
 ## State and visual specifications
 
@@ -1764,8 +1773,8 @@ npm run legacy:build
 Then, where local prerequisites are available:
 
 ```bash
-npx supabase start
-npx supabase db reset
+npx supabase start --workdir database
+npx supabase db reset --workdir database
 npm run test:integration
 npx playwright install chromium
 npm run test:e2e
@@ -2016,7 +2025,7 @@ Use these as executable completion checks.
 4. Prefer extending established modules and RPC/job patterns over parallel abstractions.
 5. Use exact domain types and Zod schemas at boundaries.
 6. Keep route files thin.
-7. Keep logic files within the repository line limit.
+7. Split logic at cohesive domain, ownership, or testability boundaries; do not split solely by line count.
 8. Preserve unrelated dirty-worktree changes.
 9. Do not stage or commit unless explicitly requested.
 10. Do not run paid model calls without explicit authorization and appropriate credentials.

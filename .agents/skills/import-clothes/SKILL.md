@@ -9,9 +9,9 @@ Turn photos of worn clothing into source-faithful transparent catalog PNGs and m
 
 ## Inputs
 
-Obtain the source-image folder unless the user already supplied it. Resolve relative paths from the repository root. Confirm this is the Wardrobe repository by checking for `package.json`, `scripts/import-job-api.mjs`, and `data/` in `.gitignore`.
+Obtain the source-image folder unless the user already supplied it. Resolve relative paths from the repository root. Confirm this is the Wardrobe repository by checking for `package.json`, `legacy/scripts/import-job-api.mjs`, and `legacy/data/` in `.gitignore`.
 
-At the start, check for the identity reference at `data/model-reference.png` or the local path configured by `WARDROBE_MODEL_REFERENCE`. If neither exists, ask: `Please provide a clear PNG reference photo of yourself for the modeled wardrobe images. What is its local path?` Do not begin modeled generation until the user supplies it. Keep the image local and never add it to Git.
+At the start, check for the identity reference at `legacy/data/model-reference.png` or the local path configured by `WARDROBE_MODEL_REFERENCE`. If neither exists, ask: `Please provide a clear PNG reference photo of yourself for the modeled wardrobe images. What is its local path?` Do not begin modeled generation until the user supplies it. Keep the image local and never add it to Git.
 
 Default to direct database import when the user asks to add clothes to Wardrobe. If they only request cutouts, ask for a new output-folder name instead and skip the database step.
 
@@ -25,7 +25,7 @@ Default to direct database import when the user asks to add clothes to Wardrobe.
 - Prefer omission over invented logos, text, pockets, seams, fasteners, hardware, or trim.
 - Deduplicate only when source photographs establish that two appearances are the same physical item.
 - Hold items whose defining construction cannot be recovered without substantial invention.
-- Never place temporary crops, prompts, manifests, or QA files in `data/`.
+- Never place temporary crops, prompts, manifests, or QA files in `legacy/data/`.
 
 ## Parallel work
 
@@ -48,7 +48,7 @@ Keep all intermediate files under `$WORK`. Delete it only after delivery succeed
 
 ### 1. Inventory sources
 
-Use `rg --files` first. Include JPEG, PNG, WebP, HEIC/HEIF, TIFF, BMP, and AVIF. Exclude `data/`, `dist/`, `node_modules/`, and `.git/`.
+Use `rg --files` first. Include JPEG, PNG, WebP, HEIC/HEIF, TIFF, BMP, and AVIF. Exclude `legacy/data/`, `dist/`, `node_modules/`, and `.git/`.
 
 Create upright RGB JPEG working copies at quality 95 or better without upscaling. Make labeled contact sheets of at most 12 photos and inspect every sheet. Inventory every deliberately worn top, jacket, bottom, accessory, and pair of shoes.
 
@@ -131,7 +131,7 @@ Inspect checkerboard contact sheets of at most 12 items and compare sensitive re
 
 ### 7. Generate modeled photos
 
-Use `data/model-reference.png` as the identity reference unless `WARDROBE_MODEL_REFERENCE` points to another local PNG. If neither exists, ask the user for a clear reference photo before continuing. Never add that photo to Git.
+Use `legacy/data/model-reference.png` as the identity reference unless `WARDROBE_MODEL_REFERENCE` points to another local PNG. If neither exists, ask the user for a clear reference photo before continuing. Never add that photo to Git.
 
 For every accepted cutout, use Imagegen with the identity image first and exact garment PNG second. Save a horizontal 3:2 PNG as `$WORK/modeled/SLUG.png` and set `modeledFile` to `SLUG.png` in the manifest.
 
@@ -164,7 +164,7 @@ node .agents/skills/import-clothes/scripts/import-to-wardrobe.mjs \
   --manifest "$WORK/manifest.json"
 ```
 
-The script validates the cutouts and modeled PNGs, copies them into `data/imported/`, and atomically updates `data/library.json`. It derives stable UUIDs from cutout content, so rerunning an identical import updates metadata and modeled photos without creating duplicates.
+The script validates the cutouts and modeled PNGs, copies them into `legacy/data/imported/`, and atomically updates `legacy/data/library.json`. It derives stable UUIDs from cutout content, so rerunning an identical import updates metadata and modeled photos without creating duplicates.
 
 Restart the dev server only if the running app does not pick up the database change, then verify the new item count at `/api/import/wardrobe` and visually inspect the gallery.
 

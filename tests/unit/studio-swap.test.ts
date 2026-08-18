@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { applySwap } from "@/features/studio/hooks/apply-swap";
-import type { SwapCandidate } from "@/features/studio/api/item-actions";
+import { applySwap } from "@/features/studio/hooks";
+import type { SwapCandidate } from "@/features/studio/api";
 import type { StudioVariant, StudioVariantsResponse } from "@/features/studio/types";
 
 function item(itemId: string, role: StudioVariant["items"][number]["role"], sortOrder: number) {

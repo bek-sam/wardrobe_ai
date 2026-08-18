@@ -8,8 +8,8 @@ that catch real RLS, RPC, and migration bugs.
 
 Run each step in order and stop at the first failure:
 
-1. `npx supabase start` — skip if `npx supabase status` already reports running.
-2. `npx supabase db reset` — applies `supabase/migrations` in filename order.
+1. `npx supabase start --workdir database` — skip if `npx supabase status --workdir database` already reports running.
+2. `npx supabase db reset --workdir database` — applies `database/supabase/migrations` in filename order.
 3. `npm run test:integration`
 4. `npm run test:e2e`
 

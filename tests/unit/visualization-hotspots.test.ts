@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { OutfitItemRole } from "@/features/outfits/types";
+import type { OutfitItemRole } from "@/features/outfits";
 import {
   buildSnapshotHotspots,
   isUsableHotspot,

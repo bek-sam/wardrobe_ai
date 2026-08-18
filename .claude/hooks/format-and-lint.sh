@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # PostToolUse hook for Edit|Write.
-# Formats the touched file with the repo's prettier, then lints it. A lint
-# failure exits 2 so the message goes straight back to Claude — this is what
-# surfaces the CLAUDE.md 50-line `max-lines` rule at write time instead of at
-# the next `npm run lint`.
+# Formats the touched file with the repo's Prettier, then lints it. A lint
+# failure exits 2 so actionable correctness and safety feedback is returned
+# immediately instead of waiting for the next full-project check.
 set -uo pipefail
 
 file=$(jq -r '.tool_response.filePath // .tool_input.file_path // empty')

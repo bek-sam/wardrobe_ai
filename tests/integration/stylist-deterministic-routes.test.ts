@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { buildItemQuery } from "@/lib/ai/agents/orchestrator/intent/item-query";
-import { resolveWardrobeIntentDeterministic } from "@/lib/ai/agents/orchestrator/intent/resolve-intent";
+import { buildItemQuery } from "@/lib/ai/agents/orchestrator/intent";
+import { resolveWardrobeIntentDeterministic } from "@/lib/ai/agents/orchestrator/intent";
 import { buildUnwornItems, buildWardrobeInsights, fetchInsightItems } from "@/lib/insights";
 import { resolveIntentQuotaPolicy } from "@/lib/usage/intent-quota";
 import { searchWardrobeItems } from "@/lib/wardrobe-search";

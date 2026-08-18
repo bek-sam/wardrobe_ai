@@ -1,94 +1,166 @@
-# Architecture
+# Wardrobe AI architecture
 
-Wardrobe AI is one strict TypeScript Next.js App Router application with server-rendered pages, Route Handlers, authenticated Supabase access, deterministic recommendation logic, and bounded OpenAI calls. Long-running work is represented in PostgreSQL rather than being tied to one browser request.
+Status: implemented
+Last updated: 2026-08-14
 
-## Request boundaries
+## Decision
+
+Wardrobe AI uses a monorepo with four independently deployable runtimes, a
+database project, and a contract package. The physical split follows runtime
+trust and scaling needs; code inside each runtime is grouped by product
+capability.
 
 ```text
-browser
-  ├─ public/auth pages
-  └─ protected application pages
-       └─ Next.js Route Handler
-            ├─ resolve Supabase user
-            ├─ validate with Zod
-            ├─ user-scoped PostgreSQL/RLS operation
-            ├─ deterministic service or authenticated tool
-            └─ typed response / user-visible stream
-
-durable worker
-  └─ lease queued job with service role
-       ├─ decode/normalize private image or clues
-       ├─ call bounded OpenAI operation
-       ├─ persist reviewable proposal and safe trace
-       └─ release as review, retry, or terminal failure
+src/                 Frontend (the root Next.js project)
+backend/             public API and business application
+worker/              durable background execution
+ai-orchestration/    private AI gateway and provider policy
+database/            Supabase/PostgreSQL/Auth/Storage assets
+contracts/           transport contracts only
+infrastructure/      containers and topology
+legacy/              isolated prototype
 ```
 
-The browser never receives the Supabase service-role key or OpenAI key. Ordinary application routes use the user session and RLS. Service-role access is limited to background work, Storage administration, account cleanup, and operations that cannot be expressed through user RLS.
+Root `src/` is intentionally the Frontend. There is no second `frontend/`
+project and no server business implementation under Frontend.
 
-## Application layers
+## Containers and trust boundaries
 
-- `src/app`: layouts, pages, and HTTP route handlers.
-- `src/features`: feature types, schemas, hooks, and components.
-- `src/lib/supabase`: browser, server-session, and admin clients.
-- `src/lib/auth`: authenticated viewer resolution.
-- `src/lib/image`: decoded-content validation, normalization, cropping, cleanup, and thumbnails.
-- `src/lib/recommendation`: hard filters, configurable scoring, color/layer compatibility, exact-ID validation, and balanced planning.
-- `src/lib/weather`: Open-Meteo geocoding, forecasts, caching, and clothing constraints.
-- `src/lib/ai`: environment-selected OpenAI clients, strict schemas, prompts, agents, and authenticated tools.
-- `src/lib/compilation`: bounded, deterministic outfit-candidate generation for the precomputed library (weights/diversity, no model calls).
-- `src/jobs`: durable import, research, wardrobe-compilation, and private-object cleanup processors.
-- `supabase/migrations`: schema, RLS, private Storage, transactional RPCs, usage controls, and account lifecycle.
+```mermaid
+flowchart LR
+  browser["Browser / user"]
+  edge["Reverse proxy / load balancer"]
+  frontend["Frontend\nNext.js :3000"]
+  backend["Backend\nNext.js API :3001"]
+  worker["Worker\ncontinuous replicas"]
+  ai["AI Orchestration\nFastify :3002 private"]
+  supabase["Supabase\nPostgres + Auth + Storage"]
+  weather["Open-Meteo"]
+  provider["OpenAI"]
 
-## Data flow: photo import
+  browser -->|HTTPS| edge
+  edge --> frontend
+  edge -->|/api and /auth/callback| backend
+  frontend -->|SSR HTTP with cookies| backend
+  backend -->|session/RLS + privileged operations| supabase
+  backend -->|forecast/geocoding| weather
+  backend -->|Bearer token + deadline| ai
+  worker -->|claim/lease/finalize| supabase
+  worker -->|Bearer token + deadline| ai
+  ai -->|provider credentials| provider
+```
 
-1. An authenticated route allocates an owned `import_jobs` row and signed private upload path.
-2. The browser uploads directly to the private originals bucket.
-3. A worker leases the job, validates decoded bytes, normalizes orientation/color, removes metadata, and analyzes the image once.
-4. Each detected garment becomes a durable candidate with a crop and field-level AI confidence.
-5. The user approves/corrects the crop, extraction, and proposed metadata.
-6. Confirmation creates owned wardrobe records and image lineage in one PostgreSQL transaction. A retry returns the same item IDs.
-7. Approved derivatives are promoted to item-prefixed private paths idempotently; immutable source lineage remains available for audit/retry.
+Only Frontend and Backend are reachable from the edge. AI Orchestration and
+Worker stay on a private network. Worker exposes no HTTP port. Supabase is the
+durable system of record; model output never directly authorizes a write.
 
-AI never silently writes the final item metadata. Confirmation merges only reviewable proposals and user edits.
+## Ownership matrix
 
-## Data flow: styling
+| Owner            | Owns                                                                                                                                       | Must not own                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| Frontend         | layouts/pages, presentation, accessibility, interaction state, upload progress, same-origin Backend bridge                                 | secrets, database/provider SDKs, authorization truth, jobs, prompts |
+| Backend          | sessions, auth callbacks, validation, authorization, quotas, API DTOs, use cases, signed upload coordination, deterministic rules, weather | UI, OpenAI SDK/model configuration, durable processors              |
+| Worker           | leased claims, retries/backoff, import/research/compilation/preview/visualization/deletion handlers                                        | public user routes, browser sessions, provider SDK/prompt policy    |
+| AI Orchestration | private allow-listed tasks, prompt building, structured output, provider adapters and model selection                                      | database access, product authorization, sessions, workflow truth    |
+| Database         | tables, RLS, private Storage policy, constraints, atomic RPCs, idempotency and durable queues                                              | UI and provider orchestration                                       |
+| Contracts        | public DTOs, private task envelopes, job/event types                                                                                       | framework or business implementation                                |
 
-Step 0 is routing. The stylist endpoint resolves the request's intent (`outfit_request`, `planning`, `packing`, `insight`, `item_question`) plus its deterministic slots — date window, trip destination, insight period, lookup terms — and dispatches accordingly: a wear-history question is answered from `lib/insights`, an ownership question from `lib/wardrobe-search`, a multi-day or trip request from the planner agent, and only an outfit request runs the steps below. Every route returns a `kind`-discriminated answer with a user-facing `answer` string, and each is recorded in `agent_runs`.
+The automated boundary check rejects cross-owner implementation imports and
+forbidden dependencies. Local development follows the same HTTP paths as
+production.
 
-Routing happens **before** any budget is charged, and exactly once per turn. `src/app/api/stylist/chat/resolve-chat-intent.ts` is the authenticated boundary: it resolves the intent, charges precisely that route's quota (see the [intent → quota matrix](agents.md#intent--quota-matrix)), and threads the resolved value through the SSE stream to the orchestrator, which never re-classifies. Deterministic routes therefore spend no daily AI generation unit, and planning/packing spend one planner unit rather than one planner plus one stylist. `runPlanForWindow` charges nothing — it is a shared pipeline, not a request boundary. Chat itself is gated on Supabase configuration, not on OpenAI, so the lookup and insight routes stay usable with every model variable unset while model-backed routes fail closed with a typed 503.
+## Capability ownership inside services
 
-1. Resolve the authenticated user, preferences, requested date/location, and candidate wardrobe rows.
-2. Convert forecast data into deterministic constraints.
-3. Remove archived, deleted, unavailable, laundry, and weather-incompatible items.
-4. Score the remaining candidates with centrally configured weights.
-5. Give the stylist a compact candidate set of exact owned IDs and structured metadata.
-6. Validate its structured result against ownership, availability, role, and outfit-foundation rules.
-7. Optionally save through a transactional database RPC.
+Each runtime groups implementation by the product function it performs:
 
-A valid foundation is exactly one dress or exactly one top plus one bottom. A dress cannot be combined with a top or bottom. Optional layer, shoes, and accessory roles are unique.
+| Capability        | Frontend                    | Backend                                                   | Worker                                | AI Orchestration / Database                         |
+| ----------------- | --------------------------- | --------------------------------------------------------- | ------------------------------------- | --------------------------------------------------- |
+| Account           | auth/onboarding/settings UI | session, OAuth/callbacks, MFA, legal, export/deletion API | deletion cleanup                      | Auth, RLS, account RPCs                             |
+| Catalog           | wardrobe UI                 | items, uploads, signed URLs, search                       | compilation triggers                  | catalog/extraction tasks; wardrobe tables           |
+| Intake & research | import/review UI            | enqueue/confirm/accept commands                           | import and research processors        | garment/research tasks; durable job tables          |
+| Context           | weather presentation        | geocoding, forecast, deterministic constraints            | job-time forecast access              | occasion interpretation task                        |
+| Style engine      | stylist experience          | retrieval, filtering, validation, chat use cases          | candidate compilation/curation        | style tasks; candidate/agent tables                 |
+| Looks & planning  | outfits/planner/today UI    | outfit/plan/wear commands and validation                  | preview generation                    | planning/explanation tasks; transactional RPCs      |
+| Studio            | studio interaction          | identity consent, visualization commands/downloads        | preview/visualization pipeline        | image/QA/localization tasks; private media metadata |
+| Insights          | charts and states           | deterministic analytics                                   | none                                  | indexed relational data                             |
+| Platform          | safe error/status UI        | rate limits, idempotency, health                          | retries, cleanup, operational metrics | feature limits, queues, audit tables                |
 
-## Data flow: precomputed outfit-candidate library
+This is not one microservice per feature. Account, Catalog, Looks, and Insights
+share transactional application behavior in Backend. A new deployable is
+justified only by a different trust boundary, scaling profile, failure mode, or
+provider responsibility.
 
-A durable, debounced `wardrobe_compilation_jobs` row (queued by a trigger on relevant `wardrobe_items` changes, or by `request_wardrobe_recompilation()` for a manual "Recompile") is leased — by the interactive route for low-latency processing, or by the scheduler-driven `POST /api/internal/wardrobe/process` worker — and run through `compileWardrobeForUser`:
+## Request and job flows
 
-1. Load the user's active/available wardrobe and style/feedback preferences.
-2. `generateOutfitCandidates` greedily fills each foundation's roles per normalized occasion category (`src/lib/recommendation/occasion-context.ts`), expanding a small bounded set of layer/footwear/accessory variants and tagging aggregate weather coverage — never an unbounded Cartesian product.
-3. Every candidate for a fresh `compiled_wardrobe_version` is inserted **alongside** any still-active prior version (never a delete-then-insert).
-4. `finalize_wardrobe_compilation()` atomically verifies the new version's row count, flips `wardrobe_compilation_state`'s published-version pointer, archives the prior version, and compare-and-swaps the dirty-change counter — publishing a version that ends up slightly stale (a wardrobe edit landed mid-run) is still safe, since retrieval re-validates item ownership/availability per request; it simply queues a follow-up job.
+### Interactive request
 
-Live retrieval (`retrieveStoredOutfitCandidates`) prefilters a wide pool by the request's resolved occasion category, live-scores/hard-filters it against current weather and preferences, and returns up to three ranked, deduplicated alternatives (safest, underused, expressive) instead of one. The orchestrator only falls back to full LLM composition when nothing in the library clears the confidence bar; exposure counting and fallback-candidate growth are atomic RPCs invoked through Next's `after()` so they run post-response without an untracked background promise.
+1. The browser sends a same-origin request to Frontend.
+2. the Next rewrite forwards `/api/*` or an auth callback to Backend; SSR code
+   calls `BACKEND_URL` directly and forwards the session cookie.
+3. Backend authenticates, validates bounded input, authorizes ownership, and
+   applies rate/idempotency rules.
+4. Backend runs deterministic work and a database transaction, optionally
+   calling the private AI task API with an explicit deadline.
+5. Backend returns a versioned DTO; Frontend only presents it.
 
-## Reliability
+### Durable job
 
-- Import, research, storage-cleanup, and wardrobe-compilation state, attempts, lease times, and errors are persisted.
-- Worker claims use `FOR UPDATE SKIP LOCKED`; failed jobs retry with capped exponential backoff up to a fixed attempt limit before landing in a terminal `retry_exhausted`/dead-letter state.
-- Garment candidate IDs are deterministic per job/ordinal.
-- Save, swap, wear, research-acceptance, and plan operations use transactional RPCs.
-- Idempotency and feature-usage tables support retry safety and cost controls.
-- Agent logs contain safe summaries and usage, not image bytes, secrets, or hidden reasoning.
-- Weather failure degrades to occasion/preference styling instead of blocking a recommendation.
-- See `docs/deployment.md` for how the internal worker routes get scheduled in production, their required environment variables, and the wardrobe-compilation worker's `/health` endpoint.
+1. Backend atomically enqueues a database job and returns `202`/status data.
+2. Worker replicas claim bounded batches with leases and `SKIP LOCKED`.
+3. A handler performs idempotent I/O and calls an allow-listed AI task when
+   needed.
+4. The Worker transactionally finalizes, schedules retry/backoff, or records a
+   terminal error. Expired leases make crashed work recoverable.
+5. Frontend polls the public status API; it never calls Worker or AI directly.
 
-## Legacy boundary
+## Scaling and performance
 
-Vite and the local JSON importer remain behind `legacy:*` scripts during parity review. Production Next.js code does not read `data/library.json`, depend on a global model-reference photo, or register the old cache-first service worker.
+- Frontend and Backend are stateless standalone Next.js images. Scale replicas
+  horizontally behind a reverse proxy; scale vertically for CPU/memory only
+  after measuring saturation.
+- Worker horizontal scale is safe because the queue uses row locks and leases.
+  `WORKER_CONCURRENCY` bounds simultaneous handlers in each replica. Start low:
+  image decoding and generation are memory/provider heavy.
+- AI Orchestration is stateless and independently scalable. Apply provider
+  concurrency and rate limits centrally instead of duplicating them in callers.
+- Keep hot deterministic filtering bounded before any model call. Compilation
+  precomputes candidate libraries; user requests retrieve and rank a bounded
+  set instead of exploring the combinatorial wardrobe space live.
+- Database constraints/RPCs make multi-row transitions atomic. Index ownership,
+  status, due-time, and lease columns used by queues and user-scoped reads.
+- Observe p50/p95/p99 latency, error rate, queue age, claim conflicts, retry
+  count, provider latency/cost, and database saturation before changing scale.
+
+## Security invariants
+
+- Browser bundles contain no Supabase service credential, AI token, OpenAI key,
+  model identifier, provider prompt, or private database implementation.
+- Backend and Worker may hold separate Supabase server credentials. Migrate from
+  the legacy service-role JWT to scoped Supabase secret keys where platform
+  compatibility permits, and rotate each workload independently.
+- AI Orchestration is private, requires constant-time Bearer authentication,
+  accepts only named tasks with bounded payloads, honors deadlines, and exposes
+  no generic prompt endpoint.
+- RLS remains enabled on every user-owned table and private bucket. Privileged
+  code performs explicit ownership validation even when credentials bypass RLS.
+- Private uploads use short-lived signed URLs after Backend authorization;
+  decoded image validation and normalization occur server-side.
+- Logs contain safe identifiers/summaries, never secrets, raw prompts, private
+  images, signed URLs, or precise private location.
+
+## Source-file policy
+
+Architecture is not a line-count contest. There is no 50-line minimum or
+maximum. Combine files when they have the same owner, reason to change, tests,
+and lifecycle. Keep short files when required by a framework route, a public
+contract, a security boundary, or a durable retry seam. The generated
+[source consolidation audit](source-consolidation-audit.md) makes remaining
+small modules visible without padding or unsafe merging.
+
+## Further reading
+
+- [Deployment](deployment.md)
+- [Database model](data-model.md)
+- [Authentication](authentication.md)
+- [Implemented migration map](architecture-migration-map.md)
+- [Research and performance review](architecture-and-performance-review-2026-08-12.md)

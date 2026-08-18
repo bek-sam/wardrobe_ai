@@ -1,8 +1,9 @@
-import { SettingsManager } from "@/features/settings/components/SettingsManager";
-import { isSupabaseConfigured } from "@/lib/env/client";
+import { SettingsManager } from "@/features/settings/components";
+import { getFrontendConfig } from "@/lib/backend/server";
 
 export const metadata = { title: "Settings" };
 
-export default function SettingsPage() {
-  return <SettingsManager configured={isSupabaseConfigured()} />;
+export default async function SettingsPage() {
+  const configured = (await getFrontendConfig()).databaseConfigured;
+  return <SettingsManager configured={configured} />;
 }

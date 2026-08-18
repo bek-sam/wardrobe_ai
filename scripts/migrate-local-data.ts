@@ -55,7 +55,7 @@ async function normalizedAsset(filePath: string) {
 async function main() {
   if (process.argv.includes("--help")) {
     console.info(
-      "Usage: npm run migrate:legacy -- --user-id <auth-user-uuid> [--data-dir data] [--apply]",
+      "Usage: npm run migrate:legacy -- --user-id <auth-user-uuid> [--data-dir legacy/data] [--apply]",
     );
     return;
   }
@@ -64,10 +64,10 @@ async function main() {
     throw new Error("--user-id must be a valid UUID.");
   }
   const apply = process.argv.includes("--apply");
-  const dataDirectory = path.resolve(argument("--data-dir") ?? "data");
+  const dataDirectory = path.resolve(argument("--data-dir") ?? "legacy/data");
   const libraryPath = path.join(dataDirectory, "library.json");
   const items = JSON.parse(await readFile(libraryPath, "utf8")) as LegacyItem[];
-  if (!Array.isArray(items)) throw new Error("data/library.json must contain an array.");
+  if (!Array.isArray(items)) throw new Error("legacy/data/library.json must contain an array.");
 
   console.info(
     `${apply ? "Applying" : "Dry run:"} ${items.length} legacy wardrobe records for ${userId}.`,

@@ -17,7 +17,7 @@ export function applyLocalSupabaseEnv(): boolean {
 
   let output: string;
   try {
-    output = execFileSync("npx", ["supabase", "status", "-o", "env"], {
+    output = execFileSync("npx", ["supabase", "status", "--workdir", "database", "-o", "env"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -44,11 +44,12 @@ export function applyLocalSupabaseEnv(): boolean {
   return applyAppAliases();
 }
 
-/** The app reads the standard NEXT_PUBLIC_ and SUPABASE_ names, not TEST_. */
+/** Backend reads server-only SUPABASE_* aliases; Frontend receives only a storage origin. */
 function applyAppAliases(): boolean {
-  process.env.NEXT_PUBLIC_SUPABASE_URL ??= process.env.TEST_SUPABASE_URL;
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??= process.env.TEST_SUPABASE_ANON_KEY;
+  process.env.SUPABASE_URL ??= process.env.TEST_SUPABASE_URL;
+  process.env.SUPABASE_PUBLISHABLE_KEY ??= process.env.TEST_SUPABASE_ANON_KEY;
   process.env.SUPABASE_SERVICE_ROLE_KEY ??= process.env.TEST_SUPABASE_SERVICE_ROLE_KEY;
+  process.env.NEXT_PUBLIC_STORAGE_ORIGIN ??= process.env.TEST_SUPABASE_URL;
   process.env.NEXT_PUBLIC_APP_URL ??= "http://127.0.0.1:3000";
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }

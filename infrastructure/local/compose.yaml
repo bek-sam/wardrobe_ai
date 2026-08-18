@@ -1,0 +1,165 @@
+name: wardrobe
+
+services:
+  frontend:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/frontend.Dockerfile
+    environment:
+      BACKEND_URL: http://backend:3001
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      NEXT_PUBLIC_STORAGE_ORIGIN: ${NEXT_PUBLIC_STORAGE_ORIGIN:-http://127.0.0.1:54321}
+      NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: ${NEXT_PUBLIC_GOOGLE_AUTH_ENABLED:-false}
+      NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED: ${NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED:-false}
+      NEXT_PUBLIC_CAPTCHA_ENABLED: ${NEXT_PUBLIC_CAPTCHA_ENABLED:-false}
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+    ports: ["3000:3000"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [edge]
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    environment:
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      AI_ORCHESTRATION_URL: http://ai-orchestration:3002
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+      OPEN_METEO_FORECAST_URL: ${OPEN_METEO_FORECAST_URL:-https://api.open-meteo.com/v1/forecast}
+      OPEN_METEO_GEOCODING_URL: ${OPEN_METEO_GEOCODING_URL:-https://geocoding-api.open-meteo.com/v1/search}
+      WEATHER_CACHE_TTL_SECONDS: ${WEATHER_CACHE_TTL_SECONDS:-900}
+      WARDROBE_ORIGINALS_BUCKET: ${WARDROBE_ORIGINALS_BUCKET:-wardrobe-originals}
+      WARDROBE_ITEMS_BUCKET: ${WARDROBE_ITEMS_BUCKET:-wardrobe-items}
+      WARDROBE_LABELS_BUCKET: ${WARDROBE_LABELS_BUCKET:-wardrobe-labels}
+      WARDROBE_GENERATED_BUCKET: ${WARDROBE_GENERATED_BUCKET:-wardrobe-generated}
+      PROFILE_REFERENCES_BUCKET: ${PROFILE_REFERENCES_BUCKET:-profile-references}
+      SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-300}
+      DAILY_IMAGE_LIMIT: ${DAILY_IMAGE_LIMIT:-20}
+      DAILY_STYLIST_LIMIT: ${DAILY_STYLIST_LIMIT:-40}
+      DAILY_PLANNER_LIMIT: ${DAILY_PLANNER_LIMIT:-10}
+      STYLIST_RATE_LIMIT_PER_MINUTE: ${STYLIST_RATE_LIMIT_PER_MINUTE:-5}
+      PLANNER_RATE_LIMIT_PER_MINUTE: ${PLANNER_RATE_LIMIT_PER_MINUTE:-2}
+      IMAGE_RATE_LIMIT_PER_MINUTE: ${IMAGE_RATE_LIMIT_PER_MINUTE:-3}
+      WARDROBE_QUERY_RATE_LIMIT_PER_MINUTE: ${WARDROBE_QUERY_RATE_LIMIT_PER_MINUTE:-20}
+      INTENT_CLASSIFICATION_RATE_LIMIT_PER_MINUTE: ${INTENT_CLASSIFICATION_RATE_LIMIT_PER_MINUTE:-10}
+      IDENTITY_ASSESSMENT_DAILY_LIMIT: ${IDENTITY_ASSESSMENT_DAILY_LIMIT:-10}
+      IDENTITY_ASSESSMENT_RATE_LIMIT_PER_MINUTE: ${IDENTITY_ASSESSMENT_RATE_LIMIT_PER_MINUTE:-3}
+      VISUALIZATION_DOWNLOAD_RATE_LIMIT_PER_MINUTE: ${VISUALIZATION_DOWNLOAD_RATE_LIMIT_PER_MINUTE:-20}
+      PUBLIC_SIGNUP_ENABLED: ${PUBLIC_SIGNUP_ENABLED:-false}
+      NEXT_PUBLIC_GOOGLE_AUTH_ENABLED: ${NEXT_PUBLIC_GOOGLE_AUTH_ENABLED:-false}
+      NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED: ${NEXT_PUBLIC_EMAIL_MAGIC_LINK_ENABLED:-false}
+      NEXT_PUBLIC_CAPTCHA_ENABLED: ${NEXT_PUBLIC_CAPTCHA_ENABLED:-false}
+      NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${NEXT_PUBLIC_TURNSTILE_SITE_KEY:-}
+      AUTH_ACTION_SECRET: ${AUTH_ACTION_SECRET:-}
+      AUTH_RATE_LIMIT_HMAC_SECRET: ${AUTH_RATE_LIMIT_HMAC_SECRET:-}
+      TRUSTED_CLIENT_IP_HEADER: ${TRUSTED_CLIENT_IP_HEADER:-}
+    expose: ["3001"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/v1/health').then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    depends_on:
+      ai-orchestration:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [edge, private]
+
+  ai-orchestration:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/ai-orchestration.Dockerfile
+    environment:
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE_URL: ${OPENAI_API_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_VISION_MODEL: ${OPENAI_VISION_MODEL:-}
+      OPENAI_STYLIST_MODEL: ${OPENAI_STYLIST_MODEL:-}
+      OPENAI_PLANNER_MODEL: ${OPENAI_PLANNER_MODEL:-}
+      OPENAI_RESEARCH_MODEL: ${OPENAI_RESEARCH_MODEL:-}
+      OPENAI_CURATOR_MODEL: ${OPENAI_CURATOR_MODEL:-}
+      OPENAI_IMAGE_MODEL: ${OPENAI_IMAGE_MODEL:-}
+      OPENAI_IMAGE_QUALITY: ${OPENAI_IMAGE_QUALITY:-high}
+      OPENAI_VISUALIZATION_QA_MODEL: ${OPENAI_VISUALIZATION_QA_MODEL:-}
+      OPENAI_IMAGE_CAPABILITY_PROFILE: ${OPENAI_IMAGE_CAPABILITY_PROFILE:-auto_fidelity}
+      OUTFIT_VISUALIZATION_PROVIDER: ${OUTFIT_VISUALIZATION_PROVIDER:-openai}
+      OUTFIT_VISUALIZATION_FAKE_OUTCOME: ${OUTFIT_VISUALIZATION_FAKE_OUTCOME:-}
+    expose: ["3002"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3002/internal/v1/health').then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [private]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/worker.Dockerfile
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      AI_ORCHESTRATION_URL: http://ai-orchestration:3002
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:-}
+      OPEN_METEO_FORECAST_URL: ${OPEN_METEO_FORECAST_URL:-https://api.open-meteo.com/v1/forecast}
+      OPEN_METEO_GEOCODING_URL: ${OPEN_METEO_GEOCODING_URL:-https://geocoding-api.open-meteo.com/v1/search}
+      WEATHER_CACHE_TTL_SECONDS: ${WEATHER_CACHE_TTL_SECONDS:-900}
+      WARDROBE_ORIGINALS_BUCKET: ${WARDROBE_ORIGINALS_BUCKET:-wardrobe-originals}
+      WARDROBE_ITEMS_BUCKET: ${WARDROBE_ITEMS_BUCKET:-wardrobe-items}
+      WARDROBE_LABELS_BUCKET: ${WARDROBE_LABELS_BUCKET:-wardrobe-labels}
+      WARDROBE_GENERATED_BUCKET: ${WARDROBE_GENERATED_BUCKET:-wardrobe-generated}
+      PROFILE_REFERENCES_BUCKET: ${PROFILE_REFERENCES_BUCKET:-profile-references}
+      SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-300}
+      WORKER_ENABLED_FAMILIES: ${WORKER_ENABLED_FAMILIES:-storage-deletion,import,research,wardrobe-compilation,outfit-preview,outfit-visualization}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      WARDROBE_COMPILATION_MAX_CANDIDATES: ${WARDROBE_COMPILATION_MAX_CANDIDATES:-}
+      WARDROBE_COMPILATION_MAX_FOUNDATIONS_PER_BUCKET: ${WARDROBE_COMPILATION_MAX_FOUNDATIONS_PER_BUCKET:-}
+      WARDROBE_CURATOR_MAX_CANDIDATES: ${WARDROBE_CURATOR_MAX_CANDIDATES:-40}
+      WARDROBE_CURATOR_MAX_CALLS_PER_COMPILATION: ${WARDROBE_CURATOR_MAX_CALLS_PER_COMPILATION:-2}
+      WARDROBE_CURATOR_MAX_SELECTED_PER_NEW_ITEM: ${WARDROBE_CURATOR_MAX_SELECTED_PER_NEW_ITEM:-5}
+      DAILY_CURATOR_CALL_LIMIT: ${DAILY_CURATOR_CALL_LIMIT:-20}
+      OUTFIT_ANALYSIS_CACHE_TTL_DAYS: ${OUTFIT_ANALYSIS_CACHE_TTL_DAYS:-90}
+      PREVIEW_MAX_AUTO_PER_UPLOAD: ${PREVIEW_MAX_AUTO_PER_UPLOAD:-5}
+      PREVIEW_DAILY_LIMIT: ${PREVIEW_DAILY_LIMIT:-30}
+      PREVIEW_MAX_QUEUED_PER_USER: ${PREVIEW_MAX_QUEUED_PER_USER:-5}
+      PREVIEW_FREQUENTLY_SUGGESTED_THRESHOLD: ${PREVIEW_FREQUENTLY_SUGGESTED_THRESHOLD:-3}
+      AI_CATALOG_POLICY_VERSION: ${AI_CATALOG_POLICY_VERSION:-catalog@v1}
+      AI_RESEARCH_POLICY_VERSION: ${AI_RESEARCH_POLICY_VERSION:-research@v1}
+      AI_CURATOR_POLICY_VERSION: ${AI_CURATOR_POLICY_VERSION:-curator@v1}
+      AI_IMAGE_POLICY_VERSION: ${AI_IMAGE_POLICY_VERSION:-image@v1}
+    depends_on:
+      ai-orchestration:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs: [/tmp]
+    networks: [private]
+
+networks:
+  edge: {}
+  # No host ports are published for private services. Outbound connectivity is
+  # still required for Supabase, weather, and provider APIs; enforce narrower
+  # egress with the production platform's network policy.
+  private: {}

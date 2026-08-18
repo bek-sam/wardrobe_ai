@@ -1,0 +1,25 @@
+{
+  "name": "@wardrobe/ai-orchestration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build && node --env-file-if-exists=../.env.local dist/server.js",
+    "build": "tsc -p tsconfig.json && node scripts/resolve-imports.mjs",
+    "start": "node --env-file-if-exists=../.env.local dist/server.js",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --config vitest.config.ts"
+  },
+  "dependencies": {
+    "@wardrobe/contracts": "0.1.0",
+    "fastify": "^5.10.0",
+    "openai": "^6.48.0",
+    "sharp": "^0.35.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

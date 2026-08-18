@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { BrandMark } from "@/components/ui/BrandMark";
+import { BrandMark } from "@/components/ui";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 

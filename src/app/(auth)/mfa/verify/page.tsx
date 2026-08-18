@@ -1,13 +1,28 @@
 import { ShieldCheck } from "@phosphor-icons/react/ssr";
 
+import { SubmitButton } from "@/components/ui/client";
 import { safeReturnTo } from "@/lib/auth/redirects";
-import type { SearchParamValue } from "@/components/ui/search-param-value";
-import { requireLiveUser } from "@/lib/auth/live-user";
+import type { SearchParamValue } from "@/components/ui/auth";
+import { getMfaFactors } from "@/lib/backend/server";
 
 import { MfaChallengeForm } from "./MfaChallengeForm";
-import { SignOutLink } from "./SignOutLink";
 
 export const metadata = { title: "Two-factor verification" };
+
+function SignOutLink() {
+  return (
+    <form action="/api/auth/logout" className="auth-form auth-form--inline" method="post">
+      <input name="scope" type="hidden" value="local" />
+      <SubmitButton pendingLabel="Signing out…" variant="secondary">
+        Cancel and sign out
+      </SubmitButton>
+      <p className="form-field__hint">
+        Lost your authenticator? Signing out is safe — contact support to have the factor removed
+        after an identity check. We cannot bypass it from here.
+      </p>
+    </form>
+  );
+}
 
 type MfaVerifySearchParams = Promise<{ returnTo?: SearchParamValue }>;
 
@@ -17,12 +32,7 @@ export default async function MfaVerifyPage({
   searchParams: MfaVerifySearchParams;
 }) {
   const query = await searchParams;
-  const { supabase } = await requireLiveUser();
-  const { data } = await supabase.auth.mfa.listFactors();
-  const factors = (data?.totp ?? []).map((factor) => ({
-    id: factor.id,
-    label: factor.friendly_name ?? "Authenticator app",
-  }));
+  const factors = await getMfaFactors();
 
   return (
     <section className="auth-card auth-card--compact" aria-labelledby="mfa-verify-title">

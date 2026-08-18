@@ -39,7 +39,7 @@ Authentication → URL Configuration.
 - ☐ Remove any `**` wildcard entry. A production wildcard makes every
   redirect-validation control in the application moot.
 - ☐ Keep `http://localhost:3000/**` and `http://127.0.0.1:3000/**` only in the
-  local `supabase/config.toml`, never in the hosted project.
+  local `database/supabase/config.toml`, never in the hosted project.
 
 ## 3. Email and password settings
 
@@ -159,11 +159,13 @@ Restrict it to named administrators and log every use.
 ## 9. Operations
 
 - ☐ Verify Auth Audit Logs are being retained (Authentication → Logs).
-- ☐ Schedule the Storage-deletion worker: `POST /api/internal/storage/process`
-  with the worker secret, every 5–15 minutes.
-- ☐ Schedule the retention sweep: `POST /api/internal/maintenance/prune`,
-  daily.
-- ☐ Monitor `GET /api/internal/storage/health`. Alert on `dead_letter > 0`,
+- ☐ Deploy at least one continuously running `@wardrobe/worker` replica for
+  Storage deletion; verify graceful shutdown, lease recovery, dead-letter alerts,
+  and that task completion occurs only after private bytes are gone.
+- ☐ Schedule `prune_wardrobe_operational_data()` and the auth/deletion retention
+  RPCs daily through the database platform or a dedicated private operator job.
+  Do not use a public Backend process endpoint.
+- ☐ Export aggregate deletion-queue metrics with a read-only private collector. Alert on `dead_letter > 0`,
   `account_deletions_needing_attention > 0`, and a growing
   `oldest_pending_age_seconds`.
 - ☐ Create the alerts listed in

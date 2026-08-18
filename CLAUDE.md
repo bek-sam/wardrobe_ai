@@ -1,152 +1,128 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Wardrobe AI is a privacy-sensitive clothing assistant implemented as four
+independently deployable workloads in one monorepo. Root `src/` is Frontend.
+`backend/`, `worker/`, and `ai-orchestration/` are separate projects that
+communicate only through network contracts. `database/` owns Supabase assets;
+`contracts/` owns transport types. `legacy/` is reference-only.
 
-## Project
+## Non-negotiable ownership
 
-Wardrobe AI is a private, account-based clothing assistant: Next.js (App Router) + TypeScript + Supabase (Postgres/Auth/Storage) + OpenAI + Open-Meteo. It turns owned garments into a searchable wardrobe, source-backed product research, weather-aware outfit recommendations, plans, wear history, and insights.
+- **Frontend (`src/`)**: pages, components, accessibility, browser state, SSR
+  presentation, and Backend HTTP clients. No Route Handlers, database/provider
+  SDKs, business authorization, jobs, or secrets.
+- **Backend (`backend/`)**: public API, Supabase session/cookie boundary,
+  authorization, validation, quotas, business use cases, signed uploads,
+  deterministic algorithms, and weather access. No React UI, OpenAI SDK, model
+  prompts, or durable job execution.
+- **Worker (`worker/`)**: claims, leases, retries, heartbeats, idempotent durable
+  handlers, and storage/media processing. No public browser API, React, OpenAI
+  SDK, or provider prompt policy.
+- **AI Orchestration (`ai-orchestration/`)**: authenticated allow-listed model
+  tasks, prompt construction, provider schemas/adapters, and model policy. No
+  product database, user sessions, or business writes.
+- **Database (`database/supabase/`)**: immutable migrations, RLS, Auth/Storage
+  policy, transactions, queue truth, and atomic RPCs.
+- **Contracts (`contracts/`)**: versioned DTOs and private task/event envelopes;
+  no framework or business implementation.
 
-A legacy Vite prototype (`src/*.jsx`, `src/features/import`, `scripts/import-api`, `data/library.json`) still exists behind `legacy:*` scripts for reference during parity review. **Do not wire production Next.js code to the legacy JSON store or the old cache-first service worker.**
+Never add a source import across deployable boundaries. A local development
+shortcut must still use HTTP because deployment uses HTTP. Shared contracts may
+be imported from `@wardrobe/contracts`.
+
+## Security
+
+- Frontend may receive only browser-safe configuration. Do not put database
+  credentials, service/secret keys, workload tokens, provider keys, model IDs,
+  prompts, private object paths, or signed URLs into source, logs, public env, or
+  browser bundles.
+- Supabase service credentials are Backend/Worker-only. OpenAI credentials and
+  model IDs are AI-Orchestration-only. `AI_SERVICE_TOKEN` is private workload
+  authentication for Backend/Worker → AI Orchestration.
+- Authenticate, authorize ownership, validate bounded input, apply quotas, and
+  use idempotency before side effects. Treat all model output as untrusted.
+- Preserve RLS and database constraints as defense in depth. Never weaken them
+  to make a test or service call pass.
+- Do not log raw prompts, images, auth/session values, signed URLs, secret
+  headers, precise location, or private Storage paths.
+- Keep private AI Orchestration off the public network. Unknown tasks return
+  not-found; expired deadlines fail before provider work.
+
+## Runtime and scale
+
+- Frontend and Backend are stateless standalone Next deployments. Do not use
+  process memory or local files as durable/cache truth across requests.
+- Durable handlers live only in Worker. Claims use database row locks/leases,
+  bounded attempts, backoff, and idempotent finalization. Multiple replicas must
+  safely process different jobs.
+- `WORKER_CONCURRENCY` is bounded per replica; add replicas for horizontal scale
+  and raise concurrency only after observing database/provider limits.
+- HTTP calls need explicit deadlines and typed errors. Maintain compatibility
+  with the previous contract/database shape during rolling deployment.
+- AI proposes. Deterministic validation and database transactions decide what
+  is persisted.
+
+## Source organization
+
+Inside an owner, group by product capability: account, catalog, intake,
+research, context, style engine, looks/planning, studio, insights, and platform.
+Framework-mandated entry points may stay small. Combine implementation files
+that change and test together; split at security, contract, durable-retry,
+framework, or genuinely reusable domain seams.
+
+There is **no line-count rule** and no requirement that every file exceed 50
+lines. Do not pad files or merge unrelated responsibilities to satisfy a number.
+Use `npm run audit:consolidation` to review the distribution, not enforce size.
+
+## Working rules
+
+- Preserve user changes in this dirty worktree; do not reset or overwrite
+  unrelated work.
+- Use `rg`/`rg --files` for search and `apply_patch` for hand edits.
+- Never edit an applied migration. Add a new ordered migration.
+- Do not wire production code to `legacy/` or its JSON data.
+- Do not add fake/sample user data as a production fallback. Provider-backed
+  features fail closed with typed errors when required configuration is absent.
+- Keep route handlers thin: authenticate, parse, call a use case, map the typed
+  response. Long-running routes enqueue and return status.
+- Do not expose hidden chain-of-thought. Store only safe summaries and bounded
+  observability fields.
 
 ## Commands
 
 ```bash
-npm run dev              # Next.js dev server (webpack), http://localhost:3000
-npm run build             # production build
-npm run lint               # ESLint
-npm run typecheck          # tsc --noEmit (strict)
-npm test                   # Vitest unit tests (single run)
-npm run test:watch         # Vitest watch mode
-npx vitest run tests/unit/planner.test.ts   # run a single test file
-npx vitest run -t "test name"               # run tests matching a name
-npm run test:e2e           # Playwright e2e (spins up dev server itself)
-npm run format:check       # Prettier check
-npm run format              # Prettier write
-npm run check:quality      # format:check + lint + typecheck + test + build + legacy:build (no DB/browser needed)
-npm run check               # check:quality + test:integration + test:e2e (needs local Supabase + Playwright Chromium)
+npm run dev                    # Frontend :3000, Backend :3001, AI :3002, Worker
+npm run check:architecture     # dependency cycles + owner boundaries + audit
+npm run typecheck              # Frontend
+npm test                       # Frontend unit/presentation tests
+npm run architecture:typecheck
+npm run architecture:test
+npm run build
+npm run architecture:build
+npm run check:quality          # all static, unit, and build gates
+npm run test:integration       # requires local Supabase
+npm run test:e2e               # requires local Supabase + Chromium
+npm run check                  # complete quality + integration + E2E
 ```
 
-`check:quality` passing is **not** evidence that the integration or E2E suites ran — only the full `npm run check` covers those, and it requires `npx supabase start`, `npx supabase db reset`, and `npx playwright install chromium` first. No suite needs an OpenAI key.
-
-Legacy prototype: `npm run legacy:dev`, `npm run legacy:build`, `npm run legacy:preview`.
-
-Legacy data migration: `npm run migrate:legacy -- --user-id <uuid>` (dry-run by default; add `--apply` only after reviewing dry-run output — scoped to one destination user, safe to rerun).
-
-Local Supabase:
+Local database:
 
 ```bash
-npx supabase start
-npx supabase db reset      # applies supabase/migrations in order
-npm run test:integration   # Vitest against the real local instance (RLS, RPCs, concurrency); reads `supabase status` automatically
+npx supabase start --workdir database
+npx supabase db reset --workdir database
 ```
 
-CI (`.github/workflows/ci.yml`) runs `check:quality`, then separate integration and authenticated-E2E jobs, both of which start and reset local Supabase. No OpenAI secret is used in CI — mirror this before pushing.
+Before handoff, run verification proportionate to the change. Boundary or
+deployment changes require `check:architecture`, every project typecheck/test,
+and every production build. Passing `check:quality` does not imply integration
+or E2E ran.
 
-## Environment
+<!-- BEGIN:nextjs-agent-rules -->
 
-Authentication is documented in `docs/authentication.md`, with the external
-steps in `docs/auth-production-checklist.md`. Auth feature flags default to off
-and are enforced server-side (`src/lib/auth/flags.ts`); `AUTH_ACTION_SECRET` and
-`AUTH_RATE_LIMIT_HMAC_SECRET` are required for password recovery and pre-auth
-rate limiting respectively. Google, CAPTCHA, and SMTP **secrets** belong in
-Supabase configuration, never in this application's environment.
+# This is NOT the Next.js you know
 
-Model IDs are intentionally not hard-coded anywhere in application source — they come only from env vars (`OPENAI_VISION_MODEL`, `OPENAI_IMAGE_MODEL`, `OPENAI_RESEARCH_MODEL`, `OPENAI_STYLIST_MODEL`, `OPENAI_PLANNER_MODEL`). AI and data-backed features must fail closed (never fall back to sample/fake data) when their required env vars are missing. See `.env.example` and `src/lib/env/{client,server}.ts`. `SUPABASE_SERVICE_ROLE_KEY`, OpenAI keys, and worker secrets are server-only — never prefix with `NEXT_PUBLIC_`.
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
 
-## Architecture
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
-### Request boundary
-
-Ordinary routes: browser → protected page → Route Handler → resolve Supabase user → Zod-validate → user-scoped Postgres/RLS operation → deterministic service or authenticated tool → typed/streamed response. The browser never sees the Supabase service-role key or an OpenAI key.
-
-Expensive/long-running work (image import, product research, storage cleanup) is **not** tied to one request. It is a durable row in Postgres, leased by a worker (`FOR UPDATE SKIP LOCKED`) via `src/jobs/*`, hitting internal routes under `src/app/api/internal/*` (secured with `IMPORT_WORKER_SECRET`). Interactive routes can also process one _owned_ job for convenience, but production should rely on a scheduler calling those internal routes.
-
-### Layers (`src/`)
-
-- `app`: layouts/pages and Route Handlers (`app/api/**`). `app/api/_lib` holds shared route schema/response helpers.
-- `features/*`: per-feature types, Zod schemas, hooks, and components (auth, wardrobe, intake/import, research, stylist, planner, outfits, insights, today, settings, weather, uploads).
-- `lib/supabase`: browser / server-session / admin (service-role) Supabase clients — pick the least-privileged one that works.
-- `lib/auth`: authenticated viewer resolution (`viewer.ts`, local claim check) plus the account-security foundations — password/legal constants, feature flags, the single `safeReturnTo` sanitizer, canonical URL and callback resolution, provider-error mapping, live `getUser()` validation for sensitive actions (`live-user.ts`), AAL helpers (`mfa.ts`), identity normalization and last-identity protection, one-time signed action challenges (`action-challenges/`), pre-auth rate limiting (`rate-limit/`), and safe auth-event recording.
-- `lib/image`: decoded-content validation, EXIF stripping, normalization, cropping.
-- `lib/recommendation`: hard filters, scoring weights, color/layer compatibility, exact-ID outfit validation, balanced planning — all deterministic, no model calls.
-- `lib/weather`: Open-Meteo geocoding/forecast + deterministic clothing constraints.
-- `lib/ai`: OpenAI client selection, strict Zod schemas, prompts, and the agents in `lib/ai/agents/*` (orchestrator, cataloging, stylist, planner, research).
-- `lib/compilation`: precomputed wardrobe/outfit-candidate generation consumed by the stylist path.
-- `lib/visualization`: shared Outfit Studio core — statuses, versioned prompt/QA/localization constants, the freshness hash, hotspot geometry + hit resolution, the pure coordinate transform, and the deterministic QA gate. **Client-safe barrel**: `freshness.ts` imports `node:crypto` and is deliberately not re-exported from `index.ts`; server callers import `@/lib/visualization/freshness` directly.
-- `lib/visualization-pipeline`: server-side snapshot resolution (candidate/outfit/plan/composition → one immutable ordered snapshot), cut-out content hashing, generation config, and the create-or-reuse request path.
-- `lib/identity-reference`: identity-photo normalization (decoded-byte validation, EXIF strip, canonical PNG), structured suitability assessment, and active-reference lookup.
-- `lib/ai/visualization-provider`: the `OutfitVisualizationProvider` interface, the OpenAI adapter, a deterministic network-free fake, the capability-aware request builder, and bounded provider-error normalization.
-- `jobs`: durable processors — `process-import.ts`, `research-item.ts`, `process-storage-deletions.ts`, `compile-wardrobe.ts`, `generate-outfit-visualizations/`.
-- `supabase/migrations`: schema, RLS, private Storage policies, transactional RPCs, quota/usage controls, account lifecycle. Applied strictly in filename order, starting with `202607210001_core_wardrobe_imports.sql`, `...0002_outfits_agents_operations.sql`, `...0003_security_storage_account.sql` and continuing through `202607300001_outfit_studio_visualizations.sql` / `202607300002_outfit_visualization_rpcs.sql` (Outfit Studio: identity references, outfit visualizations + immutable snapshots, durable visualization jobs, feedback, staleness triggers) and `202607280001_auth_security_foundations.sql` (legal acceptance, one-time auth action challenges, HMAC pre-auth rate limits, auth events), `202607280002_mfa_assurance_enforcement.sql` (restrictive `require_mfa_assurance` policies on every user-owned table and the private buckets), and `202607280003_account_deletion_truthful_states.sql` (honest deletion states, dead-lettering, health, retention). Every table enables RLS in the migration that creates it, so a partially-applied schema stays deny-by-default. Never edit a historical migration — add a new one.
-
-### AI agents (`src/lib/ai/agents`)
-
-Model calls are narrow and orchestrated, not free-roaming:
-
-- **Orchestrator** (`lib/ai/agents/orchestrator`) classifies the request into one of five intents and dispatches to the matching handler in `orchestrator/handlers/*`: `outfit_request` → retrieval/stylist composition, `planning` → planner agent over the requested window, `packing` → planner agent at the destination + deterministic packing list, `insight` → deterministic analytics from `lib/insights`, `item_question` → deterministic lookup via `lib/wardrobe-search`. Classification and slot extraction (date window, destination, insight period, lookup terms) live in `orchestrator/intent/`: keyword rules first, one small structured model call only for low-confidence text, deterministic fallback on failure. It has no unrestricted DB access. Intent is resolved **once**, at the authenticated chat boundary (`app/api/stylist/chat/resolve-chat-intent.ts`), which charges exactly that route's quota (`lib/usage/intent-quota`) and threads the resolved value through to the orchestrator — never classify or charge twice, and never charge inside `runPlanForWindow`. Deterministic routes (`item_question`, `insight`) spend no daily generation quota and work with every OpenAI variable unset; model-backed routes fail closed via `orchestrator/require-model.ts` with a typed 503. An outfit result is rejected unless every item is in the supplied candidate set, owned by the caller, active/undeleted/available, matches its declared role, and forms a valid foundation (exactly one dress, or exactly one top + one bottom). Every handler returns a `kind`-discriminated answer (`WardrobeAnswer`) carrying a user-facing `answer` string; `runWardrobeOutfitRequest` is the outfit-only entry point used by `/api/outfits/generate`.
-- **Cataloging agent**: one Responses API call detects garments in an image, returns strict structured fields + per-field confidence. Never infers an exact brand from appearance alone.
-- **Image extraction service** (`lib/ai/image-service.ts`): model output + deterministic post-processing (chroma background removal, color-distance cleanup, framing checks, bounded regeneration, explicit user approval).
-- **Research agent**: only runs on request; uses user-confirmed clues + OpenAI web search; results are proposals with evidence and a confidence tier (`verified | likely | uncertain | not_found`) until explicitly accepted via RPC. Cannot overwrite user-confirmed fields.
-- **Stylist agent**: gets compact metadata for an already-filtered candidate set (never the whole wardrobe/raw images); returns exact candidate IDs + explanation + confidence. Hard rules (ownership, availability, weather, foundation, roles) are enforced deterministically outside the model, not trusted from its output.
-- **Planner agent**: one unique look per requested date, laundry/availability/forecast aware; every returned day is re-validated before save.
-- **Outfit-variants agent** (`lib/ai/agents/outfit-variants-agent`, surfaced through `orchestrator/variants`): explains three _already-validated_ looks in one call. Retrieval and the deterministic validator pick the items; the model only writes reasons, warnings, and a stylist note, and it never sees a look missing a locked item. Locked item IDs are a hard pre-model filter (`variants/keep-locked.ts`), which is what makes remix structurally incapable of changing a locked piece.
-- **Visualization provider** (`lib/ai/visualization-provider`): generates the try-on image, runs the structured fidelity assessment, locates garment hotspots, and checks identity-photo suitability. No generated image reaches `ready` without passing the deterministic `evaluateQaGate`; at most one content-corrective regeneration is ever spent. See `docs/outfit-studio.md`.
-
-AI output is always a _proposal_ — never silently written as final item metadata. User confirmation / explicit accept-RPCs are the only path to persisted truth. `agent_runs`/`messages` store safe summaries only: no hidden chain-of-thought, no API secrets, no raw private image bytes.
-
-### Data flow: photo import
-
-Route allocates `import_jobs` row + signed upload path → browser uploads directly to private bucket → worker leases job, validates/normalizes/strips EXIF, analyzes once → each detected garment becomes an `import_job_candidates` row with crop + AI confidence → user reviews/corrects crop, extraction, metadata → `confirm_import_job(job_id)` creates wardrobe items + image lineage in one transaction (idempotent retry returns same item IDs) → approved derivatives are promoted to item-prefixed private paths idempotently.
-
-### Data flow: styling
-
-Resolve user/preferences/date/location/candidates → forecast → deterministic constraints → filter out archived/deleted/unavailable/laundry/weather-incompatible items → score remaining candidates with centrally configured weights → stylist gets compact exact-ID candidate set → validate result against ownership/availability/role/foundation rules → optionally persist via transactional RPC (`save_generated_outfit`, `save_generated_plan`, `save_generated_week`, etc.).
-
-## Claude Code tooling (`.claude/`)
-
-- `settings.json` (committed) wires two hooks on every `Edit`/`Write`: `hooks/guard-paths.sh` refuses writes to `.env*` and to **committed** migrations (uncommitted ones stay editable), and `hooks/format-and-lint.sh` runs prettier then eslint, failing the write when a rule breaks — this is what surfaces the 50-line `max-lines` rule immediately.
-- `/db-check` runs local Supabase + integration + E2E, the suites `check:quality` does not cover.
-- `@wardrobe-review` is a reviewer carrying this repo's RLS, agent, and structure invariants.
-- `settings.local.json` is gitignored and holds personal permission overrides only.
-
-## Code style
-
-**Logic files must not exceed 50 lines** (components, hooks, route handlers, `lib/*` modules, `jobs/*`). Enforced by the `max-lines` ESLint rule in `eslint.config.mjs`. Exempt: Zod schema files (`schema.ts`, `schemas.ts`, `*/schemas/**`), type-only files (`types.ts`, `*.d.ts`), SQL migrations, test files, pure-data/constant-table files (`constants.ts`, `*-data.ts` — no functions or branching, just data), and `index.ts` barrel files (pure `export { ... } from "./x"` aggregation, no logic of their own) since splitting those for line count alone hurts readability for no benefit.
-
-Folder conventions when a file grows past the limit:
-
-- **`lib/*` domain modules**: split into small single-purpose files re-exported through one `index.ts` barrel — see `src/lib/recommendation/`, `src/lib/weather/`, `src/lib/style-knowledge/` for the pattern (`scoring.ts`, `weights.ts`, `layering.ts`, etc., all re-exported).
-- **`features/*/components/`**: split into flat sibling files in the same directory, not a per-component subfolder — see `src/features/wardrobe/components/` (`WardrobeManager.tsx` alongside `CompilationStatus.tsx`, `GarmentArtwork.tsx`, `WardrobeItemCard.tsx`).
-- **`jobs/*` and other single-entry-point modules**: use a folder + `index.ts` (e.g. `src/jobs/compile-wardrobe/index.ts` + siblings) so the public import path (`@/jobs/compile-wardrobe`) is unchanged and there's no filename/directory collision.
-- **API routes**: co-locate `schema.ts` (if the route had an inline Zod schema) and `handler.ts` (the actual business logic) next to `route.ts`, leaving `route.ts` itself as a thin wrapper that resolves the viewer, calls the handler, and returns `routeError`/`NextResponse`.
-- Prefer extending an existing shared module over re-declaring a helper in a new file — e.g. `src/lib/api/request.ts` (`requestJson`, `errorMessage`) and `src/lib/api/normalize.ts` (`isObject`, `safeString`, `safeNumber`, `safeColor`) are the canonical homes for fetch/normalization helpers that used to be copy-pasted per component; `src/lib/recommendation/item-role.ts` is the canonical home for role/category presentation logic.
-
-## Data model essentials (see `docs/data-model.md` for full detail)
-
-- `profiles.id` is exactly the Supabase Auth user ID; deleting the Auth user cascades through virtually everything except `storage_deletion_queue`, which intentionally retains the former user UUID until a worker removes the underlying bytes.
-- Every user-owned table has `user_id`; junction tables use **composite** foreign keys (e.g. `(item_id, user_id)`) so a service-role bug can't link one user's row to another user's.
-- Mutations for anything expensive or state-machine-like go through **RPCs**, not direct client inserts/updates: `enqueue_import_job`, `claim_import_job(s)`, `claim_owned_import_job`, `confirm_import_job`, `enqueue_research_run`, `accept_research_run`/`reject_research_run`, `save_generated_outfit`/`save_generated_plan`/`save_generated_week`, `create_user_outfit`, `swap_outfit_item`, `mark_outfit_worn`/`mark_wardrobe_item_worn`. These RPCs own quota consumption, ownership checks, and idempotency — don't bypass them with raw table writes.
-- Quotas: `feature_limits` (server-owned daily budgets for import/research, no client access) + `feature_usage_counters`/`consume_rate_limit` for rate limiting. Exhaustion surfaces as PostgREST HTTP 429 (`PT429`) with `limit`/`used`/`remaining`/`reset_at` in `details`.
-- Import job states: `queued → analyzing → review_crop → extracting → review_metadata [→ researching] → complete` (any active state can go `failed`/`cancelled`). Candidate states are the analogous per-garment chain ending in `approved`/`rejected`/`failed`.
-
-### Data flow: AI try-on
-
-Explicit user action → resolve the source (candidate / saved outfit / plan / studio composition) under the caller's own id → build an **immutable ordered snapshot** with each garment's current cut-out content hash → compute a freshness hash over every input that can change the render → `request_outfit_visualization()` owns ownership re-verification, dedupe, rate limiting, the queue cap, and the paid quota → durable `outfit_visualization_jobs` row → worker runs `validating_inputs → generating → qa_review → localizing → ready`. A visualization belongs to the snapshot, never to an `outfit_candidates` row, so one pipeline serves every source. Full detail in `docs/outfit-studio.md`.
-
-## Storage & security (see `docs/storage-security.md`, `docs/privacy.md`)
-
-- Five private buckets, all path-scoped `{userId}/...` and enforced by Storage RLS (`auth.uid()` must equal the first path segment): `wardrobe-originals`, `wardrobe-items`, `wardrobe-labels`, `wardrobe-generated`, `profile-references`.
-- Never trust a client-provided `userId`, path, extension, MIME type, `itemId`, or `jobId` — server code constructs the path itself after resolving the authenticated user.
-- Buckets stay private; never flip them public. Generate short-lived signed URLs on authenticated server routes only, and only after verifying the DB row belongs to the caller. Persist `{bucket_id, storage_path}`, not signed URLs.
-- Server upload contract before accepting any image: decode + validate real format/dimensions/pixel count, normalize orientation/color space, strip EXIF/location metadata, reject decompression bombs.
-- Use the Storage API for deletion, never raw SQL on `storage.objects`. Hard-deleting an image/import row enqueues its path into `storage_deletion_queue`; a service-role worker drains that queue (`claim_storage_deletion_tasks`).
-- `agent_runs` is authenticated `SELECT`-only; only server/service-role code with an independently-resolved viewer may insert into it.
-
-## Testing conventions
-
-- Unit tests: Vitest + jsdom, files under `tests/unit/*.test.ts` plus a couple of top-level `tests/*.test.ts`. `tests/setup.ts` is the global setup; `tests/unit/fixtures.ts` holds shared fixtures, and `tests/unit/auth-test-env.ts` sets the auth environment that must be in place _before_ an auth route module is imported. Path alias `@` → `src`.
-- `tests/support/totp.ts` is a test-only RFC 6238 generator used by the MFA integration and E2E suites so factors are enrolled for real rather than faked.
-- E2E: Playwright, `tests/e2e/*.spec.ts`, chromium + mobile projects, dev server auto-started against `http://127.0.0.1:3000`.
-- **The authenticated E2E specs share one account and are order-dependent while `fullyParallel` is on.** A failure that only reproduces under parallel execution is usually this, not the code under test — re-run the single spec before chasing it. Fixing it properly means a per-worker account, not a retry.
-- **Auth forms need a native (pre-hydration) fallback.** A submit that lands before hydration goes through the browser's own form handling, which strips the query string and silently loses `returnTo`. Any form carrying state through the query must keep it in a hidden field or the action URL, and be tested with JS disabled.
-- The `.agents/skills/*` directory (`import-clothes`, `generate-outfits`) contains **development-time automation instructions for the legacy local-JSON workflow** — unrelated to the runtime agents in `src/lib/ai/agents`. Don't confuse the two when asked about "agents."
+<!-- END:nextjs-agent-rules -->

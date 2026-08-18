@@ -117,7 +117,7 @@ test("the service-role key value never reaches a client bundle", async ({ page }
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
   test.skip(
     !process.env.CI && serviceRoleKey === "",
-    "No service-role key in this run. Run `npx supabase start` and re-run, or set " +
+    "No service-role key in this run. Run `npx supabase start --workdir database` and re-run, or set " +
       "TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_ROLE_KEY.",
   );
 

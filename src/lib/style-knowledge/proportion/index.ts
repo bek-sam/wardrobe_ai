@@ -1,1 +1,0 @@
-export { evaluateLengthProportion } from "./evaluate";

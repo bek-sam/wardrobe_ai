@@ -1,18 +1,17 @@
-import { PlannerWorkspace } from "@/features/planner/components/PlannerWorkspace";
-import { isSupabaseConfigured } from "@/lib/env/client";
-import { getServerEnvironment } from "@/lib/env/server";
+import { PlannerWorkspace } from "@/features/planner/components";
+import { getFrontendConfig } from "@/lib/backend/server";
 
 export const metadata = { title: "Planner" };
 export const dynamic = "force-dynamic";
 
-export default function PlannerPage() {
-  const environment = getServerEnvironment();
+export default async function PlannerPage() {
+  const config = await getFrontendConfig();
   return (
     <div className="page-stack planner-page">
       <PlannerWorkspace
-        aiConfigured={Boolean(environment.OPENAI_API_KEY && environment.OPENAI_PLANNER_MODEL)}
+        aiConfigured={config.capabilities.planGenerationAvailable}
         initialDate={new Date().toISOString().slice(0, 10)}
-        supabaseConfigured={isSupabaseConfigured()}
+        supabaseConfigured={config.databaseConfigured}
       />
     </div>
   );

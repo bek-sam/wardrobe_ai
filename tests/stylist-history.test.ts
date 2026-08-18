@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { sanitizeStylistStructuredResult } from "@/features/stylist/history";
+import { sanitizeStylistStructuredResult } from "@/features/stylist";
 import {
   stylistConversationListQuerySchema,
   stylistMessageListQuerySchema,
-} from "@/features/stylist/schemas";
+} from "@/features/stylist";
 
 const topId = "d7af47d5-31f2-45d0-a253-940d8b243123";
 const bottomId = "623267bc-2be9-4d30-91a7-17fb6baa658e";

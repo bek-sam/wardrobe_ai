@@ -21,9 +21,8 @@ a throwaway studio composition all normalize into the same snapshot, so one
 pipeline serves every source, and the source can change later without
 rewriting what was actually rendered.
 
-`src/lib/visualization-pipeline/resolve-source-items.ts` does that
-normalization; `build-snapshot.ts` resolves each garment's current cut-out and
-its content hash into the snapshot rows.
+`backend/src/lib/visualization-pipeline/` performs that normalization and
+resolves each garment's current cut-out/content hash into snapshot rows.
 
 ### Request flow
 
@@ -43,13 +42,13 @@ POST /api/outfit-visualizations          (explicit "Try it on")
       ownership re-verification, dedupe, rate limit, queue cap, paid quota
   → durable outfit_visualization_jobs row
 
-worker (POST /api/internal/outfit-visualizations/process, secret-gated)
+continuous Worker (`worker/src/jobs/generate-outfit-visualizations/`)
   → validating_inputs → generating → qa_review → localizing → ready
 ```
 
-The long paid image call never runs inside an ordinary request. A deployment
-without a scheduler can opt in to `VISUALIZATION_INLINE_PROCESSING_ENABLED` for
-development and E2E only.
+The long paid image call never runs inside an ordinary request. Backend enqueues
+and returns status; continuously running Worker replicas claim the job from the
+database. There is no inline-processing or scheduler-triggered HTTP fallback.
 
 ### Freshness and deduplication
 
@@ -139,7 +138,7 @@ No test requires an OpenAI key, and CI makes no paid call.
 
 ### Model capability configuration
 
-Model IDs stay in environment variables, per the repository rule. What the code
+Model IDs stay in AI Orchestration environment variables. What that service
 carries is a **capability profile** keyed by capability, not by model name:
 
 | `OPENAI_IMAGE_CAPABILITY_PROFILE` | Meaning                                                                                                 |
@@ -154,7 +153,9 @@ portrait (`1024x1536`) — full-body try-on is never rendered landscape.
 
 1. Run a non-production capability smoke test against the candidate model.
 2. Confirm it accepts the portrait size and the profile's parameter set.
-3. Then change `OPENAI_IMAGE_MODEL` / `OPENAI_IMAGE_CAPABILITY_PROFILE`.
+3. Then change `OPENAI_IMAGE_MODEL` / `OPENAI_IMAGE_CAPABILITY_PROFILE` only in
+   AI Orchestration and bump the provider-neutral visualization policy version
+   used in freshness/audit metadata.
 
 The capability version is part of the freshness hash, so changing it correctly
 invalidates every existing visualization rather than serving an image produced
@@ -212,12 +213,11 @@ a later, separately approved migration.
 
 ## Rollout and rollback
 
-**Rollout.** Apply both migrations, then leave `OPENAI_VISUALIZATION_QA_MODEL`
-unset. The studio's flat lay, variants, locks, swaps, and save/wear/plan all
-work; try-on reports a typed "not configured" state rather than degrading. Set
-the QA model and confirm the image capability profile to enable try-on. Point a
-scheduler at `POST /api/internal/outfit-visualizations/process` with
-`OUTFIT_VISUALIZATION_WORKER_SECRET`.
+**Rollout.** Apply both migrations and deploy AI Orchestration, Worker, Backend,
+then Frontend. With `OPENAI_VISUALIZATION_QA_MODEL` unset in AI Orchestration,
+try-on fails closed with a typed unavailable state while deterministic Studio
+features keep working. Configure the model/profile and keep at least one Worker
+replica running to enable generation.
 
 **Rollback.** Unset `OPENAI_VISUALIZATION_QA_MODEL`. Try-on fails closed
 immediately; nothing else in the studio is affected and no migration needs to

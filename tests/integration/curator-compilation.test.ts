@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from "vitest";
 
-import { compileWardrobeForUser } from "@/jobs/compile-wardrobe";
+import { compileWardrobeForUser } from "@worker/jobs/compile-wardrobe";
 import { retrieveStoredOutfitCandidates } from "@/lib/ai/agents/retrieve-outfit-candidate";
 import { resolveOccasionContext } from "@/lib/recommendation";
 

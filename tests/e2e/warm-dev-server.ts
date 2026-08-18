@@ -1,12 +1,9 @@
 /**
- * Compiles the routes the suite uses before any test measures them.
+ * Warms the routes the suite uses before any test measures them.
  *
- * `next dev` builds each route on its first request, which for this app is
- * seconds — occasionally tens of seconds for a page pulling in the stylist
- * workspace. Whichever project runs first therefore pays that cost inside its
- * assertions, and the same spec passes or fails depending only on whether some
- * earlier run happened to warm the route. Fetching each one once here moves the
- * compile out of the tests, so a timeout means the app was genuinely slow.
+ * The production server still initializes route caches and external clients on
+ * first use. Fetching each route once keeps that one-time work outside the
+ * assertions, so a timeout reflects the workflow rather than suite ordering.
  *
  * Failures are ignored on purpose: a protected route answers with a redirect
  * and an unconfigured one may error. Either way the module graph is built,
@@ -33,10 +30,9 @@ const ROUTES = [
 ];
 
 /**
- * Route handlers compile on first request too, and the Outfit Studio calls
- * several of them inside a single assertion window. Warming them with a
- * deliberately invalid body is enough to build the module graph — the response
- * is discarded, and a 401/422 costs the same compile as a 200.
+ * Outfit Studio calls several handlers inside one assertion window. Warming
+ * them with a deliberately invalid body initializes the server path without
+ * mutating product data; the expected 401/422 response is discarded.
  */
 const API_ROUTES = ["/api/items/cutouts", "/api/outfits/variants", "/api/outfit-visualizations"];
 
@@ -52,7 +48,7 @@ async function reachable(baseURL: string): Promise<boolean> {
   return false;
 }
 
-export default async function warmDevServer() {
+export default async function warmServer() {
   const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000";
   if (!(await reachable(baseURL))) return;
 

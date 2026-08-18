@@ -1,8 +1,7 @@
-import type { OutfitItemRole } from "@/features/outfits/types";
-import type { OutfitVariantMode } from "@/lib/ai/schemas/outfit-variants";
+import type { OutfitItemRole } from "@/features/outfits";
 import type { GarmentHotspot, VisualizationStatus } from "@/lib/visualization";
 
-export type { OutfitVariantMode };
+export type OutfitVariantMode = "safe" | "fresh" | "statement";
 
 export type StudioVariantItem = {
   itemId: string;

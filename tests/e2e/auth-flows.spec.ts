@@ -28,7 +28,7 @@ async function signIn(page: Page, email: string, password: string) {
 test.describe("authentication", () => {
   test.skip(
     !supabaseReady,
-    "Local Supabase is not configured. Run `npx supabase start` and re-run, or set " +
+    "Local Supabase is not configured. Run `npx supabase start --workdir database` and re-run, or set " +
       "TEST_SUPABASE_URL / TEST_SUPABASE_SERVICE_ROLE_KEY.",
   );
   test.setTimeout(120_000);
@@ -134,11 +134,13 @@ test.describe("authentication", () => {
     // Both layouts ship a "Sign out": the sidebar's and the mobile top bar's,
     // both in the DOM at once with only one shown. Filtering to the visible one
     // keeps this working on either viewport, where naming a single container
-    // would pass on one project and hang on the other.
-    await page
-      .getByRole("button", { name: /^sign out$/i })
-      .filter({ visible: true })
-      .click();
+    // would pass on one project and hang on the other. Asserting the count
+    // first is what makes that safe: until the stylesheet has applied, *both*
+    // are visible, and clicking straight away turns that instant into a strict
+    // mode violation rather than waiting for the layout it is describing.
+    const signOut = page.getByRole("button", { name: /^sign out$/i }).filter({ visible: true });
+    await expect(signOut).toHaveCount(1);
+    await signOut.click();
     await expect(page).toHaveURL(/\/login/);
 
     // And the protected page is protected again.
@@ -151,10 +153,11 @@ test.describe("authentication", () => {
     createdUserIds.push(user.id);
 
     await signIn(page, user.email, "definitely not the password");
-    await expect(page.getByRole("alert")).toContainText(/email or password is incorrect/i);
+    const feedback = page.locator(".auth-feedback[role='alert']");
+    await expect(feedback).toContainText(/email or password is incorrect/i);
     // It must not distinguish an unknown address from a wrong password.
     await signIn(page, `unknown-${randomUUID()}@example.com`, "definitely not the password");
-    await expect(page.getByRole("alert")).toContainText(/email or password is incorrect/i);
+    await expect(feedback).toContainText(/email or password is incorrect/i);
   });
 
   test("recovers a password end to end and signs in with the new one", async ({ page }) => {

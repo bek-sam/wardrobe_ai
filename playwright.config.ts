@@ -9,27 +9,21 @@ applyLocalSupabaseEnv();
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  // Compiles every route once before the first test, so `next dev`'s on-demand
-  // build never lands inside an assertion's timeout.
+  // Touches every route once before the first test so caches and external
+  // connections are warm before an assertion measures them.
   globalSetup: "./tests/e2e/warm-dev-server.ts",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  // One worker everywhere, not just in CI. Every spec drives the *same* Next
-  // dev server, which compiles routes on first request, and the same Supabase
-  // instance. Playwright's default (half the cores) puts five browsers on that
-  // one server: requests then miss even a 15s assertion, and submissions
-  // appeared to do nothing at all — failures that say something about this
-  // machine rather than about the app. Serial keeps the suite deterministic and
-  // matches how CI already runs it.
+  // One worker everywhere, not just in CI. Every spec drives the same Next
+  // server and Supabase instance. Playwright's default (half the cores) puts
+  // several browsers on that shared state and makes request timing and auth
+  // cleanup nondeterministic. Serial execution matches CI.
   workers: 1,
   reporter: [["html", { open: "never" }], ["list"]],
-  // Every assertion here waits on a Next dev server that compiles routes on
-  // first hit and on real Supabase round trips, while several workers share
-  // both. Playwright's 5s default is a timing assumption, not a contract: a
-  // slow-but-correct app failed on it constantly, and an actually broken one
-  // still fails — just 10s later. Per-test timeouts stay where a specific step
-  // needs more (streaming a chat turn, deleting an account).
+  // Assertions include real Supabase round trips. Playwright's 5s default is a
+  // timing assumption, not a product contract; per-test timeouts stay where a
+  // specific workflow needs more (streaming a turn, deleting an account).
   expect: { timeout: 15_000 },
   use: {
     baseURL: "http://127.0.0.1:3000",
@@ -46,13 +40,19 @@ export default defineConfig({
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
+      // The full desktop + mobile run compiles every route into one HMR graph.
+      // Keep Next from restarting mid-suite at its default heap ceiling.
+      NODE_OPTIONS: "--max-old-space-size=8192",
       // Authenticated specs need the app pointed at local Supabase. No OpenAI
       // variable is passed: the routes they exercise are deterministic, and
       // leaving the models unset also proves chat works without them.
-      NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "",
+      SUPABASE_URL: process.env.SUPABASE_URL ?? "",
+      SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY ?? "",
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+      NEXT_PUBLIC_STORAGE_ORIGIN: process.env.NEXT_PUBLIC_STORAGE_ORIGIN ?? "",
       NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3000",
+      AI_ORCHESTRATION_URL: "http://127.0.0.1:3002",
+      AI_SERVICE_TOKEN: "e2e-ai-workload-token-0000000000000000000000000000000000",
       // Signup is exercised end to end, so it must be on for this run.
       PUBLIC_SIGNUP_ENABLED: "true",
       // Names the header tests/e2e/fixtures.ts sets, so the pre-auth limiter
@@ -72,7 +72,6 @@ export default defineConfig({
       // a dev server does not have.
       OUTFIT_VISUALIZATION_PROVIDER: "fake",
       OUTFIT_VISUALIZATION_FAKE_OUTCOME: "ready",
-      VISUALIZATION_INLINE_PROCESSING_ENABLED: "true",
       // CAPTCHA and Google stay off: neither can be driven without a live
       // third-party service, and their absence is itself asserted.
       NEXT_PUBLIC_CAPTCHA_ENABLED: "false",

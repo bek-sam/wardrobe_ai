@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { buildRecordedPlans } from "@/lib/ai/agents/orchestrator/handlers/recorded-plans";
-import type { PlanDayView } from "@/lib/ai/agents/orchestrator/answers.types";
+import { buildRecordedPlans } from "@/lib/ai/agents/orchestrator/handlers/support";
+import type { PlanDayView } from "@/lib/ai/agents/orchestrator";
 
 import {
   createAdminClient,

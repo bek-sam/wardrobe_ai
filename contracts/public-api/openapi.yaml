@@ -1,0 +1,207 @@
+openapi: 3.1.0
+info:
+  title: Wardrobe public API
+  version: 0.1.0
+  description: The versioned network contract used by the frontend. Capability endpoints are added as they migrate.
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      operationId: getBackendHealth
+      responses:
+        "200":
+          description: Backend process is ready to serve requests.
+          headers:
+            x-request-id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceHealth"
+  /insights:
+    get:
+      operationId: getWardrobeInsights
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: Deterministic analytics over the authenticated user's complete active wardrobe.
+          headers:
+            x-request-id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WardrobeInsightsResponse"
+        "401":
+          description: No valid authenticated viewer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+components:
+  securitySchemes:
+    cookieSession:
+      type: apiKey
+      in: cookie
+      name: sb-access-token
+      description: Logical Supabase SSR session; concrete cookie names may be chunked and project-scoped.
+  schemas:
+    ServiceHealth:
+      type: object
+      additionalProperties: false
+      required: [service, status, version, startedAt, checkedAt]
+      properties:
+        service:
+          const: backend
+        status:
+          const: ok
+        version:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        checkedAt:
+          type: string
+          format: date-time
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, requestId]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            requestId:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+    WardrobeInsightsResponse:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/WardrobeInsights"
+    WardrobeInsights:
+      type: object
+      additionalProperties: false
+      required:
+        - itemCount
+        - categories
+        - colors
+        - seasonalWear
+        - mostWorn
+        - leastWorn
+        - neverWorn
+        - costPerWear
+        - possibleFoundations
+        - gapSuggestions
+        - overrepresented
+      properties:
+        itemCount:
+          type: integer
+          minimum: 0
+        categories:
+          type: array
+          items: { $ref: "#/components/schemas/NamedCount" }
+        colors:
+          type: array
+          items: { $ref: "#/components/schemas/NamedCount" }
+        seasonalWear:
+          type: array
+          items: { $ref: "#/components/schemas/NamedCount" }
+        mostWorn:
+          type: array
+          items: { $ref: "#/components/schemas/InsightItem" }
+        leastWorn:
+          type: array
+          items: { $ref: "#/components/schemas/InsightItem" }
+        neverWorn:
+          type: array
+          items: { $ref: "#/components/schemas/InsightItem" }
+        costPerWear:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [itemId, name, value, currency]
+            properties:
+              itemId: { type: string }
+              name: { type: string }
+              value: { type: number }
+              currency: { type: [string, "null"] }
+        possibleFoundations:
+          type: integer
+          minimum: 0
+        gapSuggestions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [role, note]
+            properties:
+              role: { type: string }
+              note: { type: string }
+        overrepresented:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, count, note]
+            properties:
+              name: { type: string }
+              count: { type: number }
+              note: { type: string }
+    NamedCount:
+      type: object
+      additionalProperties: false
+      required: [name, count]
+      properties:
+        name: { type: string }
+        count: { type: number }
+    InsightItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - category
+        - subcategory
+        - layer_role
+        - color_names
+        - season_tags
+        - wear_count
+        - last_worn_at
+        - purchase_price
+        - currency
+      properties:
+        id: { type: string }
+        name: { type: string }
+        category: { type: string }
+        subcategory: { type: [string, "null"] }
+        layer_role:
+          type: [string, "null"]
+          enum: [top, bottom, dress, layer, shoes, accessory, null]
+        color_names:
+          type: array
+          items: { type: string }
+        season_tags:
+          type: array
+          items: { type: string }
+        wear_count:
+          type: integer
+          minimum: 0
+        last_worn_at: { type: [string, "null"] }
+        purchase_price: { type: [number, "null"] }
+        currency: { type: [string, "null"] }

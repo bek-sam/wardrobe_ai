@@ -1,170 +1,129 @@
 # Wardrobe AI
 
-Wardrobe AI is a private, account-based clothing assistant built with Next.js, TypeScript, Supabase, OpenAI, and Open-Meteo. It turns owned garments into a searchable wardrobe, source-backed product research, weather-aware outfit recommendations, future plans, wear history, and personal insights.
+Wardrobe AI is a private clothing assistant for cataloging owned garments,
+researching products, generating weather-aware outfits and plans, and creating
+opt-in outfit visualizations.
 
-The original Vite prototype is still available through the `legacy:*` scripts while the production application runs from the Next.js App Router.
+The repository is a monorepo, but each production workload is an independent
+project with an explicit network boundary:
 
-## What is implemented
+| Project             | Responsibility                                                                         | May access                  |
+| ------------------- | -------------------------------------------------------------------------------------- | --------------------------- |
+| root `src/`         | Frontend: Next.js pages, browser interaction, SSR presentation, Backend HTTP client    | Backend only                |
+| `backend/`          | Public API, sessions, authorization, business use cases, signed uploads, weather       | Supabase, AI Orchestration  |
+| `worker/`           | Durable import, research, compilation, preview, visualization, and deletion jobs       | Supabase, AI Orchestration  |
+| `ai-orchestration/` | Private, allow-listed model tasks, prompts, provider policy, OpenAI adapter            | OpenAI only                 |
+| `database/`         | Supabase configuration, additive migrations, RLS, Storage policies, transactional RPCs | PostgreSQL/Supabase tooling |
+| `contracts/`        | Shared public/private transport types; no business implementation                      | no runtime provider         |
+| `infrastructure/`   | Independent containers, local topology, deployment guidance                            | deployable artifacts        |
+| `legacy/`           | Isolated Vite prototype retained only for parity reference                             | no production imports       |
 
-- Email/password signup with confirmation, Google OAuth (PKCE), and optional magic-link sign-in for existing accounts — each behind an explicit flag, and absent from the interface rather than disabled when off.
-- Complete password recovery that actually sets a new password, plus authenticated password change and adding a password to an OAuth-only account.
-- Optional TOTP two-factor authentication, enforced at the database and Storage layer rather than only by a redirect.
-- Scoped sign-out (this device / other devices / everywhere), versioned Terms and Privacy acceptance, and a Settings security area showing the real email, providers, and factors.
-- Pre-authentication rate limiting keyed by HMAC (no raw emails or IPs stored) and optional Cloudflare Turnstile.
-- Server sessions, protected routes, and onboarding profiles.
-- PostgreSQL migrations for wardrobe items, private image lineage, durable imports, research, outfits, plans, wear history, feedback, chat, agent traces, usage controls, export, and deletion.
-- Row Level Security and private Storage policies scoped to the authenticated user.
-- Manual wardrobe CRUD plus search, filters, favorites, availability, wear actions, and signed image URLs.
-- Multi-garment photo intake with decoded-image validation, EXIF removal, crop review, extraction review, metadata correction, retries, and idempotent confirmation.
-- Product research with web evidence, confidence states, and field-by-field acceptance.
-- Open-Meteo geocoding/forecast context and deterministic clothing constraints.
-- Deterministic candidate filtering/scoring before structured OpenAI stylist and planner calls.
-- Exact-owned-item outfit validation, atomic outfit/planner/wear RPCs, swaps, feedback, and insights.
-- Outfit Studio: three meaningfully different looks (Safe, Fresh, Statement) from owned garments, an interactive flat lay built from real cut-outs, and opt-in identity-preserving AI try-on with a structured quality gate, tappable garment hotspots, keyboard-equivalent garment chips, locks, swaps, remix, and a privately labelled download. See [`docs/outfit-studio.md`](docs/outfit-studio.md).
-- Responsive public, auth, Today, Wardrobe, Import, Studio, Stylist, Planner, Outfits, Insights, and Settings experiences.
-- Vitest unit tests, Playwright smoke tests, ESLint, Prettier, strict TypeScript, and GitHub Actions CI.
+There is no duplicate `frontend/` directory: root `src/` is the only Frontend.
+Frontend does not contain Route Handlers, jobs, database clients, provider SDKs,
+or secrets. Browser `/api/*` and auth callback requests are rewritten to Backend,
+so Frontend and Backend communicate over HTTP in local and production
+environments. Backend and Worker also call AI Orchestration over authenticated
+private HTTP; they never import its implementation.
 
-AI and data-backed features fail closed until their required environment variables are configured. No sample wardrobe is presented as user data.
+## Runtime flow
 
-## Requirements
+```mermaid
+flowchart LR
+  user["Browser"] -->|HTTPS| frontend["Frontend :3000"]
+  frontend -->|HTTP + session cookies| backend["Backend :3001"]
+  backend -->|RLS/session and service operations| db["Supabase"]
+  backend -->|private authenticated HTTP| ai["AI Orchestration :3002"]
+  worker["Worker replicas"] -->|claim/lease/finalize| db
+  worker -->|private authenticated HTTP| ai
+  ai -->|provider API| openai["OpenAI"]
+```
 
-- Node.js 22.12 or newer.
-- npm 10 or newer.
-- A Supabase project, or the Supabase CLI for local development.
-- An OpenAI API key for vision, extraction, research, styling, and planning.
+Backend is stateless and horizontally scalable behind a load balancer. Worker
+replicas coordinate through PostgreSQL leases and `FOR UPDATE SKIP LOCKED`;
+`WORKER_CONCURRENCY` provides bounded vertical concurrency. AI Orchestration is
+stateless and independently scalable. The database remains the durable source
+of workflow truth.
 
 ## Local setup
+
+Requirements: Node.js 22.13+, npm 10+, and a Supabase project or the Supabase
+CLI.
 
 ```bash
 npm install
 cp .env.example .env.local
-```
-
-Start Supabase locally and apply the migrations:
-
-```bash
-npx supabase start
-npx supabase db reset
-```
-
-Copy the local Supabase URL, publishable key, and service-role key into `.env.local`. Add the OpenAI model IDs you have selected; model names are intentionally not hard-coded in application source.
-
-Then run:
-
-```bash
+npx supabase start --workdir database
+npx supabase db reset --workdir database
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+`npm run dev` starts Frontend on `:3000`, Backend on `:3001`, private AI
+Orchestration on `:3002`, and the continuous Worker. Open
+[http://localhost:3000](http://localhost:3000).
 
-## Environment variables
+The complete, workload-partitioned environment template is
+[`.env.example`](.env.example). Frontend receives only
+`NEXT_PUBLIC_*`, `BACKEND_URL`, and browser-safe configuration. The Supabase
+service role is Backend/Worker-only; OpenAI credentials and model identifiers
+are AI-Orchestration-only. Never expose either group with a `NEXT_PUBLIC_`
+prefix.
 
-The complete template is in [`.env.example`](.env.example). The minimum configuration for the account-backed app is:
+For containerized local parity:
 
-```dotenv
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-# Authentication. Generate each with: openssl rand -hex 32
-AUTH_ACTION_SECRET=
-AUTH_RATE_LIMIT_HMAC_SECRET=
-PUBLIC_SIGNUP_ENABLED=true
+```bash
+docker compose --env-file .env.local -f infrastructure/local/compose.yaml up --build
 ```
-
-Google, CAPTCHA, and SMTP **secrets** are deliberately not application
-variables — Supabase is what redeems an OAuth code, verifies a CAPTCHA token,
-and sends mail, so those belong in its configuration. See
-[Authentication](docs/authentication.md).
-
-AI routes additionally require:
-
-```dotenv
-OPENAI_API_KEY=
-OPENAI_VISION_MODEL=
-OPENAI_IMAGE_MODEL=
-OPENAI_RESEARCH_MODEL=
-OPENAI_STYLIST_MODEL=
-OPENAI_PLANNER_MODEL=
-```
-
-`SUPABASE_SERVICE_ROLE_KEY`, OpenAI keys, and worker secrets are server-only. Never prefix them with `NEXT_PUBLIC_`.
 
 ## Commands
 
-| Command                                      | Purpose                                |
-| -------------------------------------------- | -------------------------------------- |
-| `npm run dev`                                | Start the Next.js development server   |
-| `npm run build`                              | Build the production app with webpack  |
-| `npm run start`                              | Run the production build               |
-| `npm run lint`                               | Run ESLint                             |
-| `npm run typecheck`                          | Run strict TypeScript checks           |
-| `npm test`                                   | Run Vitest unit tests                  |
-| `npm run test:integration`                   | Run integration tests (local Supabase) |
-| `npm run test:e2e`                           | Run Playwright end-to-end tests        |
-| `npm run format:check`                       | Verify Prettier formatting             |
-| `npm run check:quality`                      | Static checks, unit tests, both builds |
-| `npm run check`                              | `check:quality` + integration + E2E    |
-| `npm run legacy:dev`                         | Run the preserved Vite prototype       |
-| `npm run migrate:legacy -- --user-id <uuid>` | Dry-run local JSON migration           |
+| Command                          | Purpose                                                      |
+| -------------------------------- | ------------------------------------------------------------ |
+| `npm run dev`                    | Start all four production workloads locally                  |
+| `npm run dev:frontend`           | Start only Frontend                                          |
+| `npm run check:quality`          | Format, lint, boundaries, types, unit tests, and every build |
+| `npm run check`                  | Quality plus Supabase integration and Playwright E2E         |
+| `npm run check:architecture`     | Cycles, ownership boundaries, and consolidation policy       |
+| `npm run architecture:typecheck` | Typecheck Backend, Worker, and AI Orchestration              |
+| `npm run architecture:test`      | Test Backend, Worker, and AI Orchestration                   |
+| `npm run test:integration`       | Cross-service tests against local Supabase                   |
+| `npm run test:e2e`               | Browser tests; requires local Supabase and Chromium          |
+| `npm run bench:core`             | Bounded algorithm benchmarks                                 |
+| `npm run audit:consolidation`    | Refresh the source-size inventory                            |
 
-Add `--apply` to the legacy migration only after reviewing its dry-run output and configuring Supabase. The migration is scoped to one explicit destination user and is safe to rerun.
+`check:quality` does not require provider credentials. The full `check` requires
+local Supabase, applied migrations, and `npx playwright install chromium`.
 
-### Verification prerequisites
+## Architecture rules
 
-`check:quality` runs anywhere: it is `format:check`, `lint`, `typecheck`, the unit suite, the Next build, and the legacy build. It needs no database and no OpenAI key.
+- Split by runtime responsibility first and by product capability inside each
+  runtime. Do not create a service for each file, feature, or table.
+- Network contracts are versioned. Deployables cannot import another
+  deployable's source or rely on its process memory/filesystem.
+- Frontend presentation may be rich, but authorization, quotas, database truth,
+  model prompts, and provider credentials remain server-side.
+- AI proposes; deterministic code, ownership checks, RLS, quotas, and database
+  constraints authorize persisted changes.
+- Durable work uses leased, retryable, idempotent jobs. Request handlers enqueue
+  and return status instead of performing long-running work inline.
+- There is no file-length limit. Combine code that changes for the same reason;
+  keep framework entry points, contracts, security seams, and retry boundaries
+  separate even when short.
 
-`check` additionally runs the integration and Playwright suites, which need real local infrastructure:
+See [Architecture](docs/architecture.md), [Deployment](docs/deployment.md),
+[Data model](docs/data-model.md), [Authentication](docs/authentication.md), and
+the [source consolidation audit](docs/source-consolidation-audit.md).
+
+## Legacy prototype
+
+The old Vite/JSON prototype is isolated under `legacy/`. Use `legacy:*` scripts
+only for parity review; production code must not import it. The legacy migration
+is a dry run by default:
 
 ```bash
-npx supabase start            # Docker (or Podman) must be installed and running
-npx supabase db reset         # applies supabase/migrations in order
-npx playwright install chromium
-npm run check
+npm run migrate:legacy -- --user-id <uuid>
 ```
 
-Without those three prerequisites `npm run check` cannot pass — `test:integration` fails with an explanatory error when Supabase is not running, and the authenticated stylist E2E specs skip themselves rather than pretending to pass. **`check:quality` being green is not evidence that the integration or E2E suites ran.** CI runs all three as separate jobs on every pull request.
-
-No OpenAI key is needed for any suite: the unit tests mock the model client, and the integration and authenticated E2E tests exercise the deterministic routes (wardrobe lookup, insights, recorded-plan saving), which make no model call.
-
-## Background processing
-
-Imports and product research are durable database jobs. A trusted scheduler should call the internal worker routes with `IMPORT_WORKER_SECRET`:
-
-- `POST /api/internal/imports/process`
-- `POST /api/internal/research/process`
-- `POST /api/internal/storage/process`
-
-Interactive routes can also process one owned import or research job, but production deployments should use a scheduler so work survives browser refreshes and request timeouts. The storage worker drains private-object deletions queued by item and import cleanup with leased, retryable tasks.
-
-## Architecture and trust
-
-- [Architecture](docs/architecture.md)
-- [Functional-boundary system design](docs/system-design-functional-boundaries.md)
-- [Runtime agents and deterministic services](docs/agents.md)
-- [Data model](docs/data-model.md)
-- [Storage and RLS security](docs/storage-security.md)
-- [Authentication and account security](docs/authentication.md)
-- [Auth production checklist](docs/auth-production-checklist.md)
-- [Privacy](docs/privacy.md)
-
-The repository’s [`.agents/skills`](.agents/skills) are development-time automation instructions. They are separate from the authenticated runtime agents under `src/lib/ai/agents`.
-
-## Deployment
-
-The intended production topology is Vercel plus Supabase. Before a private beta:
-
-1. Apply all Supabase migrations in order.
-2. Work through the [auth production checklist](docs/auth-production-checklist.md) — Supabase URL configuration, email/password settings, sessions, custom SMTP, and any provider you enable. None of it happens by deploying this repository.
-3. Set every server/client environment variable in the deployment environment.
-4. Configure worker scheduling and secrets, including the daily retention sweep.
-5. Run the full `npm run check` (quality gates **plus** the integration and authenticated E2E suites, which include two-user RLS assertions and the MFA-at-`aal1` denial tests made through authenticated user clients).
-6. Verify account export and deletion against a disposable production-like user, confirming the audit row reads `complete` only after the Storage objects are actually gone.
-
-## Original prototype
-
-The upstream project’s local gallery and image-import algorithms remain useful references. Existing screenshots are under `docs/screenshots`, while the modularized legacy UI and Vite middleware remain in `src/*.jsx`, `src/features/import`, and `scripts/import-api` until final parity is accepted.
+Add `--apply` only after reviewing the dry-run output.
 
 ## License
 

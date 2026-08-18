@@ -25,7 +25,7 @@ const supabaseReady = e2eSupabaseConfig() !== null;
 test.describe("outfit studio", () => {
   test.skip(
     !supabaseReady,
-    "Local Supabase is not configured. Run `npx supabase start` and re-run.",
+    "Local Supabase is not configured. Run `npx supabase start --workdir database` and re-run.",
   );
 
   // Image generation, QA, and localization all run for real (against the fake

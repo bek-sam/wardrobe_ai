@@ -5,7 +5,7 @@ description: Curate complete outfits from the local Wardrobe database and genera
 
 # Generate Outfits
 
-Create a complete local outfit collection from `data/library.json`: select strong combinations, generate a square modeled image for each, verify every result, and save the finished manifest and images under `data/`.
+Create a complete local outfit collection from `legacy/data/library.json`: select strong combinations, generate a square modeled image for each, verify every result, and save the finished manifest and images under `legacy/data/`.
 
 ## Begin with the count
 
@@ -18,9 +18,9 @@ Do the workflow end to end after receiving the count. Do not stop after returnin
 ## Requirements
 
 - Read and follow the built-in `imagegen` skill before generating images.
-- Require `data/library.json`, enough tops and bottoms for the requested count, and a local identity reference at `data/model-reference.png` or `WARDROBE_MODEL_REFERENCE`.
+- Require `legacy/data/library.json`, enough tops and bottoms for the requested count, and a local identity reference at `legacy/data/model-reference.png` or `WARDROBE_MODEL_REFERENCE`.
 - Keep every source garment and identity image local and unchanged.
-- Never add `data/`, the identity reference, garment images, or generated photos to Git.
+- Never add `legacy/data/`, the identity reference, garment images, or generated photos to Git.
 - Use only wardrobe items that exist in the current database and whose local assets resolve successfully.
 - Generate exactly the requested number of unique outfits and exactly one accepted modeled photo for each.
 
@@ -32,7 +32,7 @@ Assign each worker a disjoint set of outfit IDs plus the exact identity and garm
 
 ## 1. Inspect the wardrobe
 
-Read `data/library.json`. Resolve `/api/import/library/FILENAME` assets to `data/imported/FILENAME`. Group items by:
+Read `legacy/data/library.json`. Resolve `/api/import/library/FILENAME` assets to `legacy/data/imported/FILENAME`. Group items by:
 
 - `upperbody` — tops
 - `wholebody_up` — jackets and outer layers
@@ -96,7 +96,7 @@ Rotate restrained warm, natural settings across the collection while keeping one
 
 ## 4. Generate every outfit
 
-Create one square 1:1 modeled PNG per outfit with Imagegen. Save working outputs outside `data/` until they pass review. Use the smallest valid set of references for each call and never omit a selected garment.
+Create one square 1:1 modeled PNG per outfit with Imagegen. Save working outputs outside `legacy/data/` until they pass review. Use the smallest valid set of references for each call and never omit a selected garment.
 
 Generate in bounded batches when the collection is large. Track every outfit as `planned`, `generated`, `accepted`, or `failed`; resume only missing or failed IDs.
 
@@ -120,10 +120,10 @@ Regenerate identity drift, missing or redesigned garments, fake closures or text
 
 After all requested outfits pass:
 
-1. Create `data/outfit-images/` if needed.
-2. Copy each accepted PNG to `data/outfit-images/OUTFIT-ID.png`.
+1. Create `legacy/data/outfit-images/` if needed.
+2. Copy each accepted PNG to `legacy/data/outfit-images/OUTFIT-ID.png`.
 3. Set every accepted manifest image to `/api/import/outfits/OUTFIT-ID.png` only if the app exposes that endpoint; otherwise keep the repository-relative `outfit-images/OUTFIT-ID.png` path.
-4. Atomically write the exact requested collection to `data/outfits.json`.
+4. Atomically write the exact requested collection to `legacy/data/outfits.json`.
 5. Reopen every copied file and verify that the count of images, unique outfit IDs, and accepted manifest records all equal the number the user requested.
 
 Do not claim the current gallery displays outfits unless the app has an outfit route. The completed local assets and manifest are still the deliverable.

@@ -82,7 +82,7 @@ Import and product-research queues are created through `enqueue_import_job(...)`
 
 Authenticated users can select their own import/research workflow rows but cannot insert, update, or delete them directly. Only enqueue/owned-claim/confirm/research-decision RPCs and service-role workers may mutate workflow state. Server routes using the service role must first authenticate the viewer and include explicit `user_id = viewer.id` predicates.
 
-Before an interactive process route performs expensive work, it must obtain the row through `claim_owned_import_job(...)` or `claim_owned_research_run(...)`. An empty result means the row is missing, foreign-owned, not due, already leased, in a review/terminal state, or out of retries; the route must not process it. Only the route's later service-role updates may complete or release that successfully claimed lease.
+Backend request routes only enqueue or report status. Worker obtains expensive work through the bounded service claim RPCs. An empty claim means the row is missing, not due, already leased, in a review/terminal state, or out of retries; no work is performed. Only the Worker holding the lease may complete, retry, or release it.
 
 Before other vision, image generation, or stylist calls:
 
@@ -102,7 +102,7 @@ Hard-deleting image/import metadata automatically adds its object path to `stora
 
 Account deletion (`DELETE /api/account`) reuses this same queue instead of removing Storage objects synchronously in the request: it proves identity by whatever method the account has (current password, a Google round trip, or a one-time email link — plus AAL2 when a factor is enrolled), then `start_account_deletion()` enqueues every object from `account_deletion_manifest()` into `storage_deletion_queue` and durably records the request in `account_deletion_requests` (also FK-free, for the same reason) before the route deletes the Auth user through the Admin API. A crash between enqueueing and Auth deletion is resumable: retrying the request finds the existing `deleting_auth_user` row instead of starting over or losing track of the attempt.
 
-The request is **not** marked complete at that point. `mark_account_deletion_auth_deleted()` moves it to `auth_deleted_storage_pending` whenever anything is still queued, and only `complete_storage_deletion_task()` — draining the last outstanding object — closes it. Objects that exhaust their attempt budget move to `dead_letter` and flag the parent with `attention_required` instead of being quietly dropped. Monitor `GET /api/internal/storage/health`, which returns aggregate counts only: no user IDs, bucket names, object paths, or error strings.
+The request is **not** marked complete at that point. `mark_account_deletion_auth_deleted()` moves it to `auth_deleted_storage_pending` whenever anything is still queued, and only `complete_storage_deletion_task()` — draining the last outstanding object — closes it. Objects that exhaust their attempt budget move to `dead_letter` and flag the parent with `attention_required` instead of being quietly dropped. Monitor aggregate queue and account-deletion health through a private observability query/collector with a read-only operational credential; do not reintroduce a public or scheduler-triggered process route. Metrics must contain no user IDs, bucket names, object paths, or error strings.
 
 ## Second-factor enforcement on Storage
 

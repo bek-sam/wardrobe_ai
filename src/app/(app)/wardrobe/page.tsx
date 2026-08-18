@@ -1,13 +1,14 @@
-import { WardrobeManager } from "@/features/wardrobe/components/WardrobeManager";
-import { isSupabaseConfigured } from "@/lib/env/client";
+import { WardrobeManager } from "@/features/wardrobe/components";
+import { getFrontendConfig } from "@/lib/backend/server";
 import { previewItems } from "../preview-data";
 
 export const metadata = { title: "Wardrobe" };
 
-export default function WardrobePage() {
+export default async function WardrobePage() {
+  const configured = (await getFrontendConfig()).databaseConfigured;
   return (
     <div className="page-stack">
-      <WardrobeManager configured={isSupabaseConfigured()} previewItems={previewItems} />
+      <WardrobeManager configured={configured} previewItems={previewItems} />
     </div>
   );
 }

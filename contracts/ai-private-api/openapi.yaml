@@ -1,0 +1,37 @@
+openapi: 3.1.0
+info:
+  title: Wardrobe private AI orchestration API
+  version: 0.1.0
+  description: Private task-specific AI endpoints used by Backend and Worker. Generic prompt execution is forbidden.
+servers:
+  - url: /internal/v1
+paths:
+  /health:
+    get:
+      operationId: getAiOrchestrationHealth
+      responses:
+        "200":
+          description: AI orchestration process is alive. Provider readiness is reported separately when tasks migrate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceHealth"
+components:
+  schemas:
+    ServiceHealth:
+      type: object
+      additionalProperties: false
+      required: [service, status, version, startedAt, checkedAt]
+      properties:
+        service:
+          const: ai-orchestration
+        status:
+          const: ok
+        version:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        checkedAt:
+          type: string
+          format: date-time

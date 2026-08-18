@@ -1,7 +1,7 @@
-import type { OutfitPreview } from "@/features/outfits/components/outfit-card.types";
-import type { WardrobePreviewItem } from "@/features/wardrobe/components/wardrobe-item-card.types";
+import type { OutfitPreview } from "@/features/outfits/components/outfits-model";
+import type { GarmentPreviewItem } from "@/components/garments/GarmentArtwork";
 
-export const previewItems: WardrobePreviewItem[] = [
+export const previewItems: GarmentPreviewItem[] = [
   {
     id: "sample-stone-oxford",
     name: "Stone Oxford Shirt",

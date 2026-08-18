@@ -1,19 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { sanitizeNonOutfitAnswer } from "@/features/stylist/answers";
-import { planAnswerSchema } from "@/features/stylist/answers/schemas";
-import { applyAnswerResult } from "@/features/stylist/components/apply-answer-result";
-import { hydrateTranscriptMessages } from "@/features/stylist/components/hydrate-transcript-messages";
-import { normalizeStylistAnswer } from "@/features/stylist/components/normalize-stylist-answer";
-import type { ChatMessage } from "@/features/stylist/components/stylist.types";
-import { buildRecordedPlans } from "@/lib/ai/agents/orchestrator/handlers/recorded-plans";
-import type { PlanDayView } from "@/lib/ai/agents/orchestrator/answers.types";
+import { planAnswerSchema } from "@/features/stylist/answers";
+import { applyAnswerResult } from "@/features/stylist/components/stylist-model";
+import { hydrateTranscriptMessages } from "@/features/stylist/components/stylist-model";
+import { normalizeStylistAnswer } from "@/features/stylist/components/stylist-model";
+import type { ChatMessage } from "@/features/stylist/components/stylist-model";
 
 const generationId = "3f1d6b2e-1c4a-4f38-9b53-1e0f2a7c9d10";
 const conversationId = "5985ac32-bb23-4c1a-99bf-a966b106b07b";
 const itemId = "b8e1c0a4-2f6d-4a1b-8c3e-9d5f7a2b4c60";
 
-const planDay: PlanDayView = {
+const planDay = {
   date: "2026-07-28",
   title: "Blazer and jeans",
   explanation: "Mild and dry, so one light layer is enough.",
@@ -29,7 +27,7 @@ const planDay: PlanDayView = {
     precipitationProbability: 10,
     tags: ["mild"],
   },
-};
+} as const;
 
 function planResult(overrides: Record<string, unknown> = {}) {
   return {
@@ -58,65 +56,6 @@ function sessionStub() {
     }),
   };
 }
-
-describe("recorded plan serialization", () => {
-  it("records only the fields the save RPC replays", () => {
-    const [recorded] = buildRecordedPlans([planDay]);
-
-    expect(Object.keys(recorded ?? {}).sort()).toEqual([
-      "confidence",
-      "date",
-      "explanation",
-      "items",
-      "name",
-      "occasion",
-      "weather_context",
-    ]);
-    expect(recorded).toMatchObject({
-      date: "2026-07-28",
-      occasion: "work",
-      name: "Blazer and jeans",
-      confidence: 0.82,
-      items: [{ item_id: itemId, role: "layer", sort_order: 0 }],
-    });
-  });
-
-  it("records only owned item ids, roles, and sort order per item", () => {
-    const [recorded] = buildRecordedPlans([planDay]);
-    expect(Object.keys(recorded?.items[0] ?? {}).sort()).toEqual(["item_id", "role", "sort_order"]);
-    // Display-only fields stay out of the replayable record.
-    expect(JSON.stringify(recorded)).not.toContain("Blue blazer");
-    expect(JSON.stringify(recorded)).not.toContain("outerwear");
-  });
-
-  it("carries only the already-published weather subset, never coordinates", () => {
-    const [recorded] = buildRecordedPlans([planDay]);
-    expect(recorded?.weather_context).toEqual({
-      locationName: "Berlin",
-      minimumTemperatureC: 14,
-      maximumTemperatureC: 23,
-      precipitationProbability: 10,
-      tags: ["mild"],
-    });
-    const serialized = JSON.stringify(recorded);
-    for (const forbidden of ["latitude", "longitude", "prompt", "reasoning", "apiKey"]) {
-      expect(serialized).not.toContain(forbidden);
-    }
-  });
-
-  it("substitutes an empty weather context rather than null", () => {
-    const [recorded] = buildRecordedPlans([{ ...planDay, weather: null }]);
-    expect(recorded?.weather_context).toEqual({});
-  });
-
-  it("preserves day order across a multi-day window", () => {
-    const second = { ...planDay, date: "2026-07-29", title: "Shirt and chinos" };
-    expect(buildRecordedPlans([planDay, second]).map((entry) => entry.date)).toEqual([
-      "2026-07-28",
-      "2026-07-29",
-    ]);
-  });
-});
 
 describe("plan saved-flag sanitization", () => {
   it("accepts both boolean states", () => {

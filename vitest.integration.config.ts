@@ -5,9 +5,21 @@ import { defineConfig } from "vitest/config";
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  plugins: [
+    {
+      name: "service-aware-integration-alias",
+      async resolveId(source, importer) {
+        if (!source.startsWith("@/")) return null;
+        const owner = importer?.includes(`${path.sep}worker${path.sep}`)
+          ? "worker/src"
+          : "backend/src";
+        return this.resolve(path.join(root, owner, source.slice(2)), importer, { skipSelf: true });
+      },
+    },
+  ],
   resolve: {
     alias: {
-      "@": path.join(root, "src"),
+      "@worker": path.join(root, "worker/src"),
     },
   },
   test: {

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyAnswerResult } from "@/features/stylist/components/apply-answer-result";
-import { normalizeStylistAnswer } from "@/features/stylist/components/normalize-stylist-answer";
-import type { ChatMessage } from "@/features/stylist/components/stylist.types";
+import { applyAnswerResult } from "@/features/stylist/components/stylist-model";
+import { normalizeStylistAnswer } from "@/features/stylist/components/stylist-model";
+import type { ChatMessage } from "@/features/stylist/components/stylist-model";
 
 const conversationId = "5985ac32-bb23-4c1a-99bf-a966b106b07b";
 

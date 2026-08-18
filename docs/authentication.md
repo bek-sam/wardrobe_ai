@@ -443,8 +443,9 @@ URLs, or provider payloads.
 Writes are fire-and-forget: a logging outage must never become an
 authentication outage.
 
-`GET /api/internal/storage/health` (worker secret) reports aggregate deletion
-health. Recommended alerts:
+Export aggregate deletion health through a private read-only observability
+collector. Worker has no public HTTP port and Backend has no scheduler/process
+routes. Recommended alerts:
 
 - Login-failure spikes, and recovery-email spikes (either suggests spraying).
 - Confirmation-email delivery failures (deliverability regression).
@@ -457,12 +458,12 @@ health. Recommended alerts:
 ## Local development and testing
 
 ```bash
-npx supabase start          # Postgres, Auth, Storage, and Mailpit
-npx supabase db reset       # applies every migration in order
+npx supabase start --workdir database    # Postgres, Auth, Storage, and Mailpit
+npx supabase db reset --workdir database # applies every migration in order
 npm run dev
 ```
 
-`supabase/config.toml` turns on email confirmations, TOTP MFA, manual identity
+`database/supabase/config.toml` turns on email confirmations, TOTP MFA, manual identity
 linking, double-confirmed email changes, and the 15-character minimum locally,
 so these flows are genuinely exercised rather than skipped in development.
 
@@ -482,9 +483,9 @@ a live third-party credential in CI.
 
 | Secret                        | Where it lives           | Effect of rotating                                                             |
 | ----------------------------- | ------------------------ | ------------------------------------------------------------------------------ |
-| `AUTH_ACTION_SECRET`          | This app                 | Invalidates in-flight reset and deletion challenges. Users request a new link. |
-| `AUTH_RATE_LIMIT_HMAC_SECRET` | This app                 | Resets every active rate-limit window. Prune `auth_rate_limits` afterwards.    |
-| `SUPABASE_SERVICE_ROLE_KEY`   | This app (server only)   | Rotate in Supabase, then redeploy. Workers fail until updated.                 |
+| `AUTH_ACTION_SECRET`          | Backend                  | Invalidates in-flight reset and deletion challenges. Users request a new link. |
+| `AUTH_RATE_LIMIT_HMAC_SECRET` | Backend                  | Resets every active rate-limit window. Prune `auth_rate_limits` afterwards.    |
+| Supabase secret/service role  | Backend and Worker only  | Rotate one workload at a time; that workload fails closed until redeployed.    |
 | Google client secret          | Supabase provider config | Rotate in Google, paste into Supabase. No app change.                          |
 | Turnstile secret              | Supabase CAPTCHA config  | Rotate in Cloudflare, paste into Supabase. Site key may stay.                  |
 | SMTP credentials              | Supabase SMTP config     | No app change.                                                                 |

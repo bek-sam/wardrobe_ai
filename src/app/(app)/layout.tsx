@@ -2,10 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 
-import { AppShell } from "@/components/navigation/AppShell";
+import { AppShell } from "@/components/navigation";
 import { LEGAL_ACCEPTANCE_PATH } from "@/constants/legal";
-import { hasCurrentLegalAcceptance } from "@/lib/auth/legal";
-import { createClient } from "@/lib/supabase/server";
+import { getFrontendSession } from "@/lib/backend/server";
 
 export const metadata: Metadata = { robots: { index: false, follow: false } };
 
@@ -20,8 +19,8 @@ export const metadata: Metadata = { robots: { index: false, follow: false } };
  * acceptance screen before any wardrobe data is rendered.
  */
 export default async function ProtectedAppLayout({ children }: { children: ReactNode }) {
-  const supabase = await createClient();
-  if (!(await hasCurrentLegalAcceptance(supabase))) {
+  const session = await getFrontendSession();
+  if (!session.legalAccepted) {
     redirect(LEGAL_ACCEPTANCE_PATH);
   }
 

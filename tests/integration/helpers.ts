@@ -6,8 +6,8 @@ function requireIntegrationEnv(name: string): string {
   if (!value) {
     throw new Error(
       `${name} is not set. Integration tests need a local Supabase instance: run ` +
-        `\`npx supabase start\`, then \`npm run test:integration\` (which reads ` +
-        `\`npx supabase status -o env\` automatically via vitest.integration.config.ts).`,
+        `\`npx supabase start --workdir database\`, then \`npm run test:integration\` (which reads ` +
+        `\`npx supabase status --workdir database -o env\` automatically via vitest.integration.config.ts).`,
     );
   }
   return value;

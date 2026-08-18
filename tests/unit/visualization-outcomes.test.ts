@@ -1,61 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeRequestOutcome } from "@/lib/visualization-pipeline";
-import { outcomeNotice } from "@/features/studio/hooks/outcome-notice";
-import type { VisualizationOutcome } from "@/features/studio/api/tryon-client";
-
-const VISUALIZATION_ID = "11111111-1111-4111-8111-111111111111";
-
-/**
- * The RPC speaks snake_case and the client contract speaks camelCase. Getting
- * this wrong is silent: the request succeeds, and the browser simply never
- * learns which visualization to poll.
- */
-describe("normalizeRequestOutcome", () => {
-  it("maps a created outcome's snake_case id to camelCase", () => {
-    expect(
-      normalizeRequestOutcome({
-        outcome: "created",
-        visualization_id: VISUALIZATION_ID,
-        status: "queued",
-      }),
-    ).toEqual({ outcome: "created", visualizationId: VISUALIZATION_ID, status: "queued" });
-  });
-
-  it("preserves the live status on a reuse", () => {
-    expect(
-      normalizeRequestOutcome({
-        outcome: "reused",
-        visualization_id: VISUALIZATION_ID,
-        status: "generating",
-      }),
-    ).toEqual({ outcome: "reused", visualizationId: VISUALIZATION_ID, status: "generating" });
-  });
-
-  it("carries the reset time through on an exhausted quota", () => {
-    expect(
-      normalizeRequestOutcome({ outcome: "quota_exhausted", reset_at: "2026-08-01T00:00:00Z" }),
-    ).toEqual({ outcome: "quota_exhausted", resetAt: "2026-08-01T00:00:00Z" });
-  });
-
-  it("keeps queue_full distinct from quota_exhausted", () => {
-    expect(normalizeRequestOutcome({ outcome: "queue_full", reset_at: null })).toEqual({
-      outcome: "queue_full",
-      resetAt: null,
-    });
-  });
-
-  it("passes the conflict reason through", () => {
-    expect(normalizeRequestOutcome({ outcome: "conflict", reason: "no longer available" })).toEqual(
-      { outcome: "conflict", reason: "no longer available" },
-    );
-  });
-
-  it("falls back to a conflict rather than inventing a success", () => {
-    expect(normalizeRequestOutcome({ outcome: "something_unexpected" }).outcome).toBe("conflict");
-    expect(normalizeRequestOutcome(null).outcome).toBe("conflict");
-  });
-});
+import { outcomeNotice } from "@/features/studio/hooks";
+import type { VisualizationOutcome } from "@/features/studio/api";
 
 describe("outcomeNotice", () => {
   function notice(outcome: VisualizationOutcome["outcome"], extra = {}) {

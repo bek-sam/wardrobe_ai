@@ -1,6 +1,6 @@
 ---
 name: wardrobe-review
-description: Reviews Wardrobe AI changes against this repo's security, RLS, agent, and structure invariants. Use after writing or modifying code under src/, supabase/migrations/, or tests/.
+description: Reviews Wardrobe AI changes against this repo's security, RLS, agent, and structure invariants. Use after writing or modifying production projects, database/supabase/migrations/, or tests/.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---
@@ -59,11 +59,13 @@ Review only what changed and what it touches.
 
 ## Structure
 
-- Logic files stay under 50 lines (components, hooks, route handlers, `lib/*`,
-  `jobs/*`). Check the split followed the convention for its folder type:
-  `lib/*` → small files behind one `index.ts` barrel; `features/*/components/`
-  → flat siblings, not a per-component subfolder; `jobs/*` → folder + `index.ts`;
-  API routes → `schema.ts` + `handler.ts` with a thin `route.ts`.
+- Judge boundaries by cohesion, ownership, dependency direction, and ease of
+  testing rather than line count. Flag files that mix unrelated responsibilities
+  or modules that expose internals; also flag trivial one-function files and
+  barrels that add navigation cost without creating a real boundary.
+- API routes stay thin transport adapters. Domain and workflow logic belongs to
+  its owning feature/application module, with infrastructure dependencies behind
+  explicit adapters.
 - Prefer extending a shared module over re-declaring a helper: `lib/api/request.ts`,
   `lib/api/normalize.ts`, `lib/recommendation/item-role.ts` are the canonical homes.
 - Production Next.js code is never wired to the legacy JSON store or the old
